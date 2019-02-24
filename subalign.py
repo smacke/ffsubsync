@@ -49,15 +49,15 @@ def make_webrtcvad_detector(sample_rate=100):
     vad = webrtcvad.Vad()
     vad.set_mode(3) # set non-speech pruning aggressiveness from 0 to 3
     window_duration = 1./sample_rate # duration in seconds
-    samples_per_window = int(window_duration * FRAME_RATE + 0.5)
-    bytes_per_sample = 2
+    frames_per_window = int(window_duration * FRAME_RATE + 0.5)
+    bytes_per_frame = 2
     def _detect(asegment):
         media_bstring = []
         failures = 0
-        for start in range(0, len(asegment)//bytes_per_sample, samples_per_window):
-            stop = min(start + samples_per_window, len(asegment)//bytes_per_sample)
+        for start in range(0, len(asegment)//bytes_per_frame, frames_per_window):
+            stop = min(start + frames_per_window, len(asegment)//bytes_per_frame)
             try:
-                is_speech = vad.is_speech(asegment[start * bytes_per_sample: stop * bytes_per_sample],
+                is_speech = vad.is_speech(asegment[start * bytes_per_frame: stop * bytes_per_frame],
                                           sample_rate=FRAME_RATE)
             except:
                 is_speech = False
@@ -67,21 +67,21 @@ def make_webrtcvad_detector(sample_rate=100):
     return _detect
 
 def make_auditok_detector(sample_rate=100):
-    bytes_per_sample=2
-    samples_per_window = FRAME_RATE // sample_rate
-    validator = AudioEnergyValidator(sample_width=bytes_per_sample, energy_threshold=50)
+    bytes_per_frame=2
+    frames_per_window = FRAME_RATE // sample_rate
+    validator = AudioEnergyValidator(sample_width=bytes_per_frame, energy_threshold=50)
     tokenizer = StreamTokenizer(validator=validator, min_length=0.2*sample_rate,
                                 max_length=int(5*sample_rate),
                                 max_continuous_silence=0.25*sample_rate)
     def _detect(asegment):
         asource = BufferAudioSource(data_buffer=asegment,
                                     sampling_rate=FRAME_RATE,
-                                    sample_width=bytes_per_sample,
+                                    sample_width=bytes_per_frame,
                                     channels=1)
         ads = ADSFactory.ads(audio_source=asource, block_dur=1./sample_rate)
         ads.open()
         tokens = tokenizer.tokenize(ads)
-        length = (len(asegment)//bytes_per_sample + samples_per_window - 1)//samples_per_window
+        length = (len(asegment)//bytes_per_frame + frames_per_window - 1)//frames_per_window
         media_bstring = np.zeros(length+1, dtype=int)
         for token in tokens:
             media_bstring[token[1]] += 1
@@ -101,11 +101,11 @@ def get_speech_segments_from_media(fname, *speech_detectors):
     )
     bytes_per_frame = 2
     sample_rate = 100
-    samples_per_window = bytes_per_frame * FRAME_RATE // sample_rate
+    frames_per_window = bytes_per_frame * FRAME_RATE // sample_rate
     windows_per_buffer = 10000
     with tqdm.tqdm(total=total_duration) as pbar:
         while True:
-            in_bytes = process.stdout.read(samples_per_window * windows_per_buffer)
+            in_bytes = process.stdout.read(frames_per_window * windows_per_buffer)
             if not in_bytes:
                 break
             pbar.update(len(in_bytes) / float(bytes_per_frame) / FRAME_RATE)
