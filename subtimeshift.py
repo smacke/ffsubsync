@@ -14,13 +14,33 @@ def srt_offset(subs, td_seconds):
                            end=sub.end+td_seconds,
                            content=sub.content)
 
-def read_srt_from_file(fname):
-    with open(fname, 'r') as f:
-        return srt.parse(f.read().decode('utf-8'))
+def read_srt_from_file(fname, encoding='infer'):
+    encodings_to_try = (encoding,)
+    if encoding == 'infer':
+        encodings_to_try = ('utf-8', 'utf-8-sig')
+    exc = None
+    for encoding in encodings_to_try:
+        try:
+            if sys.version_info[0] > 2:
+                with open(fname, 'r', encoding=encoding) as f:
+                    return list(srt.parse(f.read()))
+            else:
+                with open(fname, 'r') as f:
+                    return list(srt.parse(f.read().decode(encoding)))
+        except Exception as e:
+            exc = e
+            continue
+        break
+    else:
+        raise exc
 
 def write_srt_to_file(fname, subs):
-    with open(fname, 'w') as f:
-        f.write(srt.compose(subs).encode('utf-8'))
+    if sys.version_info[0] > 2:
+        with open(fname, 'w', encoding='utf-8') as f:
+            f.write(srt.compose(subs))
+    else:
+        with open(fname, 'w') as f:
+            f.write(srt.compose(subs).encode('utf-8'))
 
 def main():
     td = float(sys.argv[3])

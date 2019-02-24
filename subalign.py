@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+from __future__ import print_function
+from builtins import range
 import math
 import logging
 import os
@@ -70,14 +72,14 @@ def best_webrtcvad_offset(subtitle_bstring, asegment, sample_rate=100, get_score
     vad = webrtcvad.Vad()
     vad.set_mode(3) # set non-speech pruning aggressiveness from 0 to 3
     window_duration = 1./sample_rate # duration in seconds
-    print 'num bytes', len(asegment)
+    print('num bytes', len(asegment))
     samples_per_window = int(window_duration * frame_rate + 0.5)
-    print 'samples per window', samples_per_window
+    print('samples per window', samples_per_window)
     bytes_per_sample = 2
     media_bstring = []
     failures = 0
-    for start in xrange(0, len(asegment)/bytes_per_sample, samples_per_window):
-        stop = min(start + samples_per_window, len(asegment)/bytes_per_sample)
+    for start in range(0, len(asegment)//bytes_per_sample, samples_per_window):
+        stop = min(start + samples_per_window, len(asegment)//bytes_per_sample)
         try:
             is_speech = vad.is_speech(asegment[start * bytes_per_sample: stop * bytes_per_sample],
                                       sample_rate=frame_rate)
@@ -86,7 +88,7 @@ def best_webrtcvad_offset(subtitle_bstring, asegment, sample_rate=100, get_score
             failures += 1
         #media_bstring.extend([is_speech]*(stop-start))
         media_bstring.append(is_speech)
-    print 'failures', failures
+    print('failures', failures)
     media_bstring = np.array(media_bstring)
     return get_best_offset(subtitle_bstring, media_bstring, get_score=get_score)
 
@@ -104,7 +106,7 @@ def get_wav_audio_segment_from_media(fname):
         os.unlink(wavname)
 
 def main():
-    reference, subin, subout = [sys.argv[i] for i in xrange(1,4)]
+    reference, subin, subout = [sys.argv[i] for i in range(1,4)]
     subtitle_bstring = binarize_subtitles(subin)
     if reference.endswith('srt'):
         reference_bstring = binarize_subtitles(reference)
@@ -113,10 +115,10 @@ def main():
         asegment = get_wav_audio_segment_from_media(reference)
         auditok_out = best_auditok_offset(subtitle_bstring, asegment, get_score=True)
         webrtcvad_out = best_webrtcvad_offset(subtitle_bstring, asegment, get_score=True)
-        print 'auditok', auditok_out
-        print 'webrtcvad', webrtcvad_out
+        print('auditok', auditok_out)
+        print('webrtcvad', webrtcvad_out)
         offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
-    print 'offset seconds: %.3f' % offset_seconds
+    print('offset seconds: %.3f' % offset_seconds)
     write_offset_file(subin, subout, offset_seconds)
     return 0
 
