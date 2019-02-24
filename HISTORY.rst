@@ -1,7 +1,7 @@
 History
 =======
 
-0.1.0 (2019-01-26)
+0.1.0 (2019-02-24)
 ------------------
 * Support srt format;
 * Support using srt as reference;
