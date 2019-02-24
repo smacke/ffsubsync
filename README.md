@@ -3,4 +3,4 @@ Automagically align subtitles to the correct time offset in a corresponding vide
 
 ![](tearing-me-apart-correct.gif)
 
-![](tearing-me-apart-incorrect.gif)
+![](tearing-me-apart-wrong.gif)
