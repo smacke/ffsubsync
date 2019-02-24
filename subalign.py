@@ -9,9 +9,9 @@ from datetime import datetime, timedelta
 import numpy as np
 import ffmpeg
 import srt
+import tqdm
 from auditok import BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
 import webrtcvad
-from show_progress import show_progress
 from subtimeshift import read_srt_from_file, write_srt_to_file, srt_offset
 
 
@@ -45,59 +45,74 @@ def binarize_subtitles(fname, sample_rate=100):
         samples[start:end+1] = True
     return samples
 
-def best_auditok_offset(subtitle_bstring, asegment, sample_rate=100, get_score=False):
-    asource = BufferAudioSource(data_buffer=asegment,
-                                sampling_rate=48000,
-                                sample_width=2,
-                                channels=1)
-    ads = ADSFactory.ads(audio_source=asource, block_dur=1./sample_rate)
-    validator = AudioEnergyValidator(sample_width=asource.get_sample_width(), energy_threshold=50)
-    tokenizer = StreamTokenizer(validator=validator, min_length=0.2*sample_rate,
-                                max_length=int(5*sample_rate),
-                                max_continuous_silence=0.25*sample_rate)
-    ads.open()
-    tokens = tokenizer.tokenize(ads)
-    length = max(token[2] for token in tokens) + 1
-    media_bstring = np.zeros(length+1, dtype=int)
-    for token in tokens:
-        media_bstring[token[1]] += 1
-        media_bstring[token[2]+1] -= 1
-    media_bstring = (np.cumsum(media_bstring)[:-1] > 0)
-    return get_best_offset(subtitle_bstring, media_bstring, get_score=get_score)
-
-def best_webrtcvad_offset(subtitle_bstring, asegment, sample_rate=100, get_score=False):
+def make_webrtcvad_detector(sample_rate=100):
     vad = webrtcvad.Vad()
     vad.set_mode(3) # set non-speech pruning aggressiveness from 0 to 3
     window_duration = 1./sample_rate # duration in seconds
     samples_per_window = int(window_duration * FRAME_RATE + 0.5)
     bytes_per_sample = 2
-    media_bstring = []
-    failures = 0
-    for start in range(0, len(asegment)//bytes_per_sample, samples_per_window):
-        stop = min(start + samples_per_window, len(asegment)//bytes_per_sample)
-        try:
-            is_speech = vad.is_speech(asegment[start * bytes_per_sample: stop * bytes_per_sample],
-                                      sample_rate=FRAME_RATE)
-        except:
-            is_speech = False
-            failures += 1
-        media_bstring.append(is_speech)
-    media_bstring = np.array(media_bstring)
-    return get_best_offset(subtitle_bstring, media_bstring, get_score=get_score)
+    def _detect(asegment):
+        media_bstring = []
+        failures = 0
+        for start in range(0, len(asegment)//bytes_per_sample, samples_per_window):
+            stop = min(start + samples_per_window, len(asegment)//bytes_per_sample)
+            try:
+                is_speech = vad.is_speech(asegment[start * bytes_per_sample: stop * bytes_per_sample],
+                                          sample_rate=FRAME_RATE)
+            except:
+                is_speech = False
+                failures += 1
+            media_bstring.append(is_speech)
+        return np.array(media_bstring)
+    return _detect
 
-def get_wav_audio_segment_from_media(fname):
+def make_auditok_detector(sample_rate=100):
+    bytes_per_sample=2
+    samples_per_window = FRAME_RATE // sample_rate
+    validator = AudioEnergyValidator(sample_width=bytes_per_sample, energy_threshold=50)
+    tokenizer = StreamTokenizer(validator=validator, min_length=0.2*sample_rate,
+                                max_length=int(5*sample_rate),
+                                max_continuous_silence=0.25*sample_rate)
+    def _detect(asegment):
+        asource = BufferAudioSource(data_buffer=asegment,
+                                    sampling_rate=FRAME_RATE,
+                                    sample_width=bytes_per_sample,
+                                    channels=1)
+        ads = ADSFactory.ads(audio_source=asource, block_dur=1./sample_rate)
+        ads.open()
+        tokens = tokenizer.tokenize(ads)
+        #length = max(token[2] for token in tokens) + 1
+        length = (len(asegment)//bytes_per_sample + samples_per_window - 1)//samples_per_window
+        media_bstring = np.zeros(length+1, dtype=int)
+        for token in tokens:
+            media_bstring[token[1]] += 1
+            media_bstring[token[2]+1] -= 1
+        return (np.cumsum(media_bstring)[:-1] > 0)
+    return _detect
+
+def get_speech_segments_from_media(fname, *speech_detectors):
     total_duration = float(ffmpeg.probe(fname)['format']['duration'])
-    print('extracting audio...')
-    with show_progress(total_duration) as socket_fname:
-        out, _ = (
-                ffmpeg
-                .input(fname)
-                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=FRAME_RATE)
-                .global_args('-progress', 'unix://{}'.format(socket_fname))
-                .run(capture_stdout=True, capture_stderr=True)
-        )
+    media_bstrings = [[] for _ in speech_detectors]
+    print('extracting speech segments...')
+    process = (
+            ffmpeg
+            .input(fname)
+            .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=FRAME_RATE)
+            .run_async(pipe_stdout=True, quiet=True)
+    )
+    samples_per_window = 2 * FRAME_RATE // 100
+    windows_per_buffer = 10000
+    with tqdm.tqdm(total=total_duration) as pbar:
+        while True:
+            in_bytes = process.stdout.read(samples_per_window * windows_per_buffer)
+            if not in_bytes:
+                break
+            pbar.update(0.5 * len(in_bytes) / FRAME_RATE)
+            in_bytes = np.frombuffer(in_bytes, np.uint8)
+            for media_bstring, detector in zip(media_bstrings, speech_detectors):
+                media_bstring.append(detector(in_bytes))
     print('...done')
-    return np.frombuffer(out, np.uint8)
+    return [np.concatenate(media_bstring) for media_bstring in media_bstrings]
 
 def main():
     try:
@@ -107,9 +122,10 @@ def main():
             reference_bstring = binarize_subtitles(reference)
             offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
         else:
-            asegment = get_wav_audio_segment_from_media(reference)
-            auditok_out = best_auditok_offset(subtitle_bstring, asegment, get_score=True)
-            webrtcvad_out = best_webrtcvad_offset(subtitle_bstring, asegment, get_score=True)
+            auditok_out, webrtcvad_out = get_speech_segments_from_media(
+                    reference, make_auditok_detector(), make_webrtcvad_detector())
+            auditok_out = get_best_offset(subtitle_bstring, auditok_out, get_score=True)
+            webrtcvad_out = get_best_offset(subtitle_bstring, webrtcvad_out, get_score=True)
             print('auditok', auditok_out)
             print('webrtcvad', webrtcvad_out)
             offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
@@ -117,7 +133,7 @@ def main():
         write_offset_file(subin, subout, offset_seconds)
         return 0
     except Exception as e:
-        print(e.stderr, file=sys.stderr)
+        print('Exception: %s' % e, file=sys.stderr)
         return 1
 
 if __name__ == "__main__":

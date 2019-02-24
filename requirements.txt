@@ -1,7 +1,5 @@
 auditok
-argparse
 ffmpeg-python
-gevent
 numpy
 srt
 tqdm
