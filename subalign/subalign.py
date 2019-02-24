@@ -124,13 +124,13 @@ def main():
     parser.add_argument('-o', '--srtout', default=None)
     parser.add_argument('--encoding', default='utf-8')
     args = parser.parse_args()
-    subtitle_bstring = binarize_subtitles(subin)
-    if reference.endswith('srt'):
-        reference_bstring = binarize_subtitles(reference)
+    subtitle_bstring = binarize_subtitles(args.srtin)
+    if args.reference.endswith('srt'):
+        reference_bstring = binarize_subtitles(args.reference)
         offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
     else:
         auditok_out, webrtcvad_out = get_speech_segments_from_media(
-                reference, make_auditok_detector(), make_webrtcvad_detector())
+                args.reference, make_auditok_detector(), make_webrtcvad_detector())
         print('computing alignments...', file=sys.stderr)
         auditok_out = get_best_offset(subtitle_bstring, auditok_out, get_score=True)
         webrtcvad_out = get_best_offset(subtitle_bstring, webrtcvad_out, get_score=True)
@@ -139,7 +139,7 @@ def main():
         print('webrtcvad', webrtcvad_out, file=sys.stderr)
         offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
     print('offset seconds: %.3f' % offset_seconds, file=sys.stderr)
-    write_offset_file(subin, subout, offset_seconds)
+    write_offset_file(args.srtin, args.srtout, offset_seconds)
     return 0
 
 if __name__ == "__main__":
