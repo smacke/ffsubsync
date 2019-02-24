@@ -2,7 +2,7 @@
 Automagically synchronize subtitles with video, aligning them to the correct starting point.
 
 Turn this:
-![](tearing-me-apart-wrong.gif)
+<img style="float: right;" src="tearing-me-apart-wrong.gif" />
 
 Into this:
 ![](tearing-me-apart-correct.gif)
