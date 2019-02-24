@@ -1,0 +1,175 @@
+diff --git a/.gitignore b/.gitignore
+index 0b0ee9c..fdaf05b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -53,3 +53,5 @@ build*
+ contrib-*
+ install-*
+ 
++# IDE
++.idea
+diff --git a/include/vlc_actions.h b/include/vlc_actions.h
+index 404c166..bcc40ea 100644
+--- a/include/vlc_actions.h
++++ b/include/vlc_actions.h
+@@ -182,6 +182,7 @@ typedef enum vlc_action_id {
+     ACTIONID_SUBTITLE_REVERSE_TRACK,
+     ACTIONID_SUBTITLE_TRACK,
+     ACTIONID_SUBTITLE_TOGGLE,
++    ACTIONID_SUBTITLE_AUTOSYNC,
+     ACTIONID_SUBTITLE_TEXT_SCALE_NORMAL,
+     ACTIONID_SUBTITLE_TEXT_SCALE_UP,
+     ACTIONID_SUBTITLE_TEXT_SCALE_DOWN,
+diff --git a/modules/codec/avcodec/fourcc.c b/modules/codec/avcodec/fourcc.c
+index 40e98e0..ce8f810 100644
+--- a/modules/codec/avcodec/fourcc.c
++++ b/modules/codec/avcodec/fourcc.c
+@@ -182,7 +182,7 @@ static const struct vlc_avcodec_fourcc video_codecs[] =
+     /* AV_CODEC_ID_V210X */
+     { VLC_CODEC_TMV, AV_CODEC_ID_TMV },
+     { VLC_CODEC_V210, AV_CODEC_ID_V210 },
+-    { VLC_CODEC_VUYA, AV_CODEC_ID_AYUV },
++//    { VLC_CODEC_VUYA, AV_CODEC_ID_AYUV },
+     /* AV_CODEC_ID_DPX */
+     { VLC_CODEC_MAD, AV_CODEC_ID_MAD },
+     { VLC_CODEC_FRWU, AV_CODEC_ID_FRWU },
+diff --git a/modules/control/hotkeys.c b/modules/control/hotkeys.c
+index 91ebde8..ab93d9e 100644
+--- a/modules/control/hotkeys.c
++++ b/modules/control/hotkeys.c
+@@ -701,6 +701,49 @@ static int PutAction( intf_thread_t *p_intf, input_thread_t *p_input,
+             }
+             break;
+         }
++        case ACTIONID_SUBTITLE_AUTOSYNC:
++        {
++            const char* home = getenv("HOME");
++            char* strbuff[4906];
++            snprintf(strbuff, 4096, "%s/.vlc/videoname.txt", home);
++            FILE* vidname_fp = fopen(strbuff, "r");
++            if (vidname_fp == NULL) {
++                DisplayMessage(p_vout, "Error: could not determine video path.");
++                break;
++            }
++            char vidname_buff[256];
++            fgets(vidname_buff, 255, vidname_fp);
++//            DisplayMessage(p_vout, "%s", vidname_buff);
++            snprintf(strbuff, 4096, "%s/.vlc/subname.txt", home);
++            FILE* subname_fp = fopen(strbuff, "r");
++            if (subname_fp == NULL) {
++                DisplayMessage(p_vout, "Error: could not determine subtitle path.");
++                break;
++            }
++            char subname_buff[256];
++            fgets(subname_buff, 255, subname_fp);
++//            DisplayMessage(p_vout, "%s", subname_buff);
++            fclose(vidname_fp);
++            fclose(subname_fp);
++            snprintf(strbuff, 4096, "subsync \"%s\" -i \"%s\" -o %s/.vlc/synchronized.srt --progress-only",
++                    vidname_buff, subname_buff, home);
++            FILE* output = popen(strbuff, "r");
++            if (output == NULL) {
++                DisplayMessage(p_vout, "Error: sync plugin not installed.");
++                break;
++            }
++            int limit = 199;
++            char *line = (char*) malloc(limit+1);
++            while (getline(&line, &limit, output) != -1) {
++                strtok(line, "\n");
++                DisplayMessage(p_vout, _("Synchronizing subtitles... %s%%"), line);
++            }
++            free(line);
++            pclose(output);
++            snprintf(strbuff, 4096, "file://%s/.vlc/synchronized.srt", home);
++            input_AddSlave(p_input, SLAVE_TYPE_SPU, strbuff, true, true, true);
++            break;
++        }
+         case ACTIONID_AUDIODELAY_DOWN:
+         case ACTIONID_AUDIODELAY_UP:
+         {
+diff --git a/src/input/input.c b/src/input/input.c
+index 0cb2729..be922e2 100644
+--- a/src/input/input.c
++++ b/src/input/input.c
+@@ -1410,6 +1410,22 @@ static int Init( input_thread_t * p_input )
+     msg_Dbg( p_input, "`%s' successfully opened",
+              input_priv(p_input)->p_item->psz_uri );
+ 
++    const char *psz_access, *psz_demux, *psz_path, *psz_anchor = NULL;
++    /* Split uri */
++    char *psz_dup = strdup( input_priv(p_input)->p_item->psz_uri );
++    input_SplitMRL( &psz_access, &psz_demux, &psz_path, &psz_anchor, psz_dup );
++//    const char* vidname_savepath = "/Users/me/.vlc/videoname.txt";
++    const char* home = getenv("HOME");
++    char vidname_savepath[256];
++    snprintf(vidname_savepath, 256, "%s/.vlc", home);
++    mkdir(vidname_savepath, 755);  // try to make sure the directory exists first
++    snprintf(vidname_savepath, 256, "%s/.vlc/videoname.txt", home);
++//    const char* vidname_savepath = sprintf("%s/.vlc/videoname.txt", home);
++    msg_Dbg( p_input, "about to write path %s to file %s", get_path(psz_path), vidname_savepath);
++    FILE* vidname_fp = fopen(vidname_savepath, "w");
++    fputs(get_path(psz_path), vidname_fp);
++    fclose(vidname_fp);
++
+     /* initialization is complete */
+     input_ChangeState( p_input, PLAYING_S );
+ 
+@@ -3377,6 +3393,16 @@ static int input_SlaveSourceAdd( input_thread_t *p_input,
+     if( psz_forced_demux && p_source == NULL )
+         p_source = InputSourceNew( p_input, psz_uri, NULL, b_can_fail );
+ 
++    if (i_type == SLAVE_TYPE_SPU) {
++        const char* home = getenv("HOME");
++        char subname_savepath[256];
++        snprintf(subname_savepath, 256, "%s/.vlc/subname.txt", home);
++        msg_Dbg( p_input, "about to write path %s to file %s", p_source->p_demux->psz_file, subname_savepath);
++        FILE* subname_fp = fopen(subname_savepath, "w");
++        fputs(p_source->p_demux->psz_file, subname_fp);
++        fclose(subname_fp);
++    }
++
+     if( p_source == NULL )
+     {
+         msg_Warn( p_input, "failed to add %s as slave", psz_uri );
+diff --git a/src/libvlc-module.c b/src/libvlc-module.c
+index 0c06bc8..31a3603 100644
+--- a/src/libvlc-module.c
++++ b/src/libvlc-module.c
+@@ -1394,6 +1394,8 @@ static const char *const mouse_wheel_texts[] = {
+ #define SUBTITLE_TRACK_KEY_LONGTEXT N_("Cycle through the available subtitle tracks.")
+ #define SUBTITLE_TOGGLE_KEY_TEXT N_("Toggle subtitles")
+ #define SUBTITLE_TOGGLE_KEY_LONGTEXT N_("Toggle subtitle track visibility.")
++#define SUBTITLE_AUTOSYNC_KEY_TEXT N_("Autosync subtitles")
++#define SUBTITLE_AUTOSYNC_KEY_LONGTEXT N_("Autosynchronize subtitles with video.")
+ #define PROGRAM_SID_NEXT_KEY_TEXT N_("Cycle next program Service ID")
+ #define PROGRAM_SID_NEXT_KEY_LONGTEXT N_("Cycle through the available next program Service IDs (SIDs).")
+ #define PROGRAM_SID_PREV_KEY_TEXT N_("Cycle previous program Service ID")
+@@ -2267,6 +2269,7 @@ vlc_module_begin ()
+ #   define KEY_AUDIO_TRACK        "l"
+ #   define KEY_SUBTITLE_TRACK     "s"
+ #   define KEY_SUBTITLE_TOGGLE    "Shift+s"
++#   define KEY_SUBTITLE_AUTOSYNC  "Ctrl+Shift+s"
+ #   define KEY_SUBTITLE_REVTRACK  "Alt+s"
+ #   define KEY_PROGRAM_SID_NEXT   "x"
+ #   define KEY_PROGRAM_SID_PREV   "Shift+x"
+@@ -2589,6 +2592,8 @@ vlc_module_begin ()
+              SUBTITLE_TRACK_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
+     add_key( "key-subtitle-toggle", KEY_SUBTITLE_TOGGLE,
+              SUBTITLE_TOGGLE_KEY_TEXT, SUBTITLE_TOGGLE_KEY_LONGTEXT, false )
++    add_key( "key-subtitle-autosync", KEY_SUBTITLE_AUTOSYNC,
++             SUBTITLE_AUTOSYNC_KEY_TEXT, SUBTITLE_AUTOSYNC_KEY_LONGTEXT, false )
+     add_key( "key-program-sid-next", KEY_PROGRAM_SID_NEXT,
+              PROGRAM_SID_NEXT_KEY_TEXT, PROGRAM_SID_NEXT_KEY_LONGTEXT, false )
+     add_key( "key-program-sid-prev", KEY_PROGRAM_SID_PREV,
+diff --git a/src/misc/actions.c b/src/misc/actions.c
+index 65178c1..4fc1a18 100644
+--- a/src/misc/actions.c
++++ b/src/misc/actions.c
+@@ -347,6 +347,7 @@ static const struct name2action
+     { "subsync-markaudio", ACTIONID_SUBSYNC_MARKAUDIO, },
+     { "subsync-marksub", ACTIONID_SUBSYNC_MARKSUB, },
+     { "subsync-reset", ACTIONID_SUBSYNC_RESET, },
++    { "subtitle-autosync", ACTIONID_SUBTITLE_AUTOSYNC, },
+     { "subtitle-revtrack", ACTIONID_SUBTITLE_REVERSE_TRACK, },
+     { "subtitle-text-scale-down", ACTIONID_SUBTITLE_TEXT_SCALE_DOWN, },
+     { "subtitle-text-scale-normal", ACTIONID_SUBTITLE_TEXT_SCALE_NORMAL, },
