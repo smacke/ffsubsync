@@ -13,7 +13,7 @@ import srt
 import tqdm
 from auditok import BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
 import webrtcvad
-from utils import read_srt_from_file, write_srt_to_file, srt_offset
+from .utils import read_srt_from_file, write_srt_to_file, srt_offset
 
 
 FRAME_RATE=48000
@@ -116,7 +116,14 @@ def get_speech_segments_from_media(fname, *speech_detectors):
     print('...done.', file=sys.stderr)
     return [np.concatenate(media_bstring) for media_bstring in media_bstrings]
 
-def main(reference, subin, subout):
+def main():
+    logging.basicConfig()
+    parser = argparse.ArgumentParser(description='Align subtitles with video.')
+    parser.add_argument('reference')
+    parser.add_argument('-i', '--srtin', required=True) # TODO: allow read from stdin
+    parser.add_argument('-o', '--srtout', default=None)
+    parser.add_argument('--encoding', default='utf-8')
+    args = parser.parse_args()
     subtitle_bstring = binarize_subtitles(subin)
     if reference.endswith('srt'):
         reference_bstring = binarize_subtitles(reference)
@@ -136,11 +143,4 @@ def main(reference, subin, subout):
     return 0
 
 if __name__ == "__main__":
-    logging.basicConfig()
-    parser = argparse.ArgumentParser(description='Align subtitles with video.')
-    parser.add_argument('reference')
-    parser.add_argument('-i', '--srtin', required=True) # TODO: allow read from stdin
-    parser.add_argument('-o', '--srtout', default=None)
-    parser.add_argument('--encoding', default='utf-8')
-    args = parser.parse_args()
-    sys.exit(main(args.reference, args.srtin, args.srtout))
+    sys.exit(main())
