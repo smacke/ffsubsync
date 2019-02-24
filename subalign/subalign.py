@@ -17,6 +17,11 @@ from .utils import read_srt_from_file, write_srt_to_file, srt_offset
 
 
 FRAME_RATE=48000
+QUIET=False
+
+def say(*args, **kwargs):
+    if QUIET: return
+    print(*args **kwargs)
 
 def get_best_offset(s1, s2, get_score=False):
     a, b = map(lambda s: 2*np.array(s).astype(float) - 1, [s1, s2])
@@ -90,10 +95,10 @@ def make_auditok_detector(sample_rate=100):
         return (np.cumsum(media_bstring)[:-1] > 0)
     return _detect
 
-def get_speech_segments_from_media(fname, *speech_detectors):
+def get_speech_segments_from_media(fname, progress_only, *speech_detectors):
     total_duration = float(ffmpeg.probe(fname)['format']['duration'])
     media_bstrings = [[] for _ in speech_detectors]
-    print('extracting speech segments...', file=sys.stderr)
+    say('extracting speech segments...', file=sys.stderr)
     process = (
             ffmpeg
             .input(fname)
@@ -104,42 +109,56 @@ def get_speech_segments_from_media(fname, *speech_detectors):
     sample_rate = 100
     frames_per_window = bytes_per_frame * FRAME_RATE // sample_rate
     windows_per_buffer = 10000
-    with tqdm.tqdm(total=total_duration) as pbar:
+    simple_progress = 0.
+    with tqdm.tqdm(total=total_duration, disable=progress_only) as pbar:
         while True:
             in_bytes = process.stdout.read(frames_per_window * windows_per_buffer)
             if not in_bytes:
                 break
-            pbar.update(len(in_bytes) / float(bytes_per_frame) / FRAME_RATE)
+            newstuff = len(in_bytes) / float(bytes_per_frame) / FRAME_RATE
+            simple_progress += newstuff
+            pbar.update(newstuff)
+            if progress_only:
+                print("%d" % int(simple_progress * 100. / total_duration))
+                sys.stdout.flush()
             in_bytes = np.frombuffer(in_bytes, np.uint8)
             for media_bstring, detector in zip(media_bstrings, speech_detectors):
                 media_bstring.append(detector(in_bytes))
-    print('...done.', file=sys.stderr)
+    say('...done.', file=sys.stderr)
     return [np.concatenate(media_bstring) for media_bstring in media_bstrings]
 
 def main():
     logging.basicConfig()
-    parser = argparse.ArgumentParser(description='Align subtitles with video.')
+    parser = argparse.ArgumentParser(description='Synchronize subtitles with video.')
     parser.add_argument('reference')
     parser.add_argument('-i', '--srtin', required=True) # TODO: allow read from stdin
     parser.add_argument('-o', '--srtout', default=None)
-    parser.add_argument('--encoding', default='utf-8')
+    parser.add_argument('--progress-only', action='store_true')
     args = parser.parse_args()
+    if args.progress_only:
+        global QUIET
+        QUIET = True
     subtitle_bstring = binarize_subtitles(args.srtin)
     if args.reference.endswith('srt'):
         reference_bstring = binarize_subtitles(args.reference)
         offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
     else:
         auditok_out, webrtcvad_out = get_speech_segments_from_media(
-                args.reference, make_auditok_detector(), make_webrtcvad_detector())
-        print('computing alignments...', file=sys.stderr)
+                args.reference,
+                args.progress_only,
+                make_auditok_detector(),
+                make_webrtcvad_detector()
+        )
+        say('computing alignments...', file=sys.stderr)
         auditok_out = get_best_offset(subtitle_bstring, auditok_out, get_score=True)
         webrtcvad_out = get_best_offset(subtitle_bstring, webrtcvad_out, get_score=True)
-        print('...done.', file=sys.stderr)
-        print('auditok', auditok_out, file=sys.stderr)
-        print('webrtcvad', webrtcvad_out, file=sys.stderr)
+        say('...done.', file=sys.stderr)
+        say('auditok', auditok_out, file=sys.stderr)
+        say('webrtcvad', webrtcvad_out, file=sys.stderr)
         offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
-    print('offset seconds: %.3f' % offset_seconds, file=sys.stderr)
-    write_offset_file(args.srtin, args.srtout, offset_seconds)
+    say('offset seconds: %.3f' % offset_seconds, file=sys.stderr)
+    if not (args.progress_only and args.srtout is None):
+        write_offset_file(args.srtin, args.srtout, offset_seconds)
     return 0
 
 if __name__ == "__main__":
