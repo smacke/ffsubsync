@@ -1,7 +1,7 @@
 # subsync
 Automagically synchronize subtitles with video, aligning them to the correct starting point.
 
-**_This is my submission for Hackillinois 2019._**
+**_This is my submission for HackIllinois 2019._**
 
 Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
