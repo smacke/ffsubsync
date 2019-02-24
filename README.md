@@ -62,7 +62,7 @@ You should now be able to autosynchronize subtitles using the hotkey `Ctrl+Shift
 (only enabled while subtitles are present).
 
 # Future Work
-The prototype VLC patch is very experimental -- it developed under pressure
+The prototype VLC patch is very experimental -- it was developed under pressure
 and just barely works. The clear next step for this project is a more robust
 integration with VLC, either directly in the VLC core, or as a plugin.
 
