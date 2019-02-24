@@ -46,4 +46,4 @@ This project would not be possible without the following libraries:
 - Other excellent Python libraries like [argparse](https://docs.python.org/3/library/argparse.html) and [tqdm](https://tqdm.github.io/), not related to the core functionality, but which enable much better experiences for developers and users.
 
 # License
-TODO figure this out.
+Code in this project is [MIT Licensed](https://opensource.org/licenses/MIT).
