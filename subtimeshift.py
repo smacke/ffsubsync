@@ -14,6 +14,18 @@ def srt_offset(subs, td_seconds):
                            end=sub.end+td_seconds,
                            content=sub.content)
 
+def srt_tolerant_parse(s):
+    subs = srt.parse(s)
+    subs_list = []
+    while True:
+        try:
+            subs_list.append(next(subs))
+        except ValueError:
+            continue
+        except StopIteration:
+            break
+    return subs_list
+
 def read_srt_from_file(fname, encoding='infer'):
     encodings_to_try = (encoding,)
     if encoding == 'infer':
@@ -23,10 +35,10 @@ def read_srt_from_file(fname, encoding='infer'):
         try:
             if sys.version_info[0] > 2:
                 with open(fname, 'r', encoding=encoding) as f:
-                    return list(srt.parse(f.read()))
+                    return srt_tolerant_parse(f.read())
             else:
                 with open(fname, 'r') as f:
-                    return list(srt.parse(f.read().decode(encoding)))
+                    return srt_tolerant_parse(f.read().decode(encoding))
         except Exception as e:
             exc = e
             continue
