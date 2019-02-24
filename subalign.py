@@ -11,6 +11,7 @@ import ffmpeg
 import srt
 from auditok import BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
 import webrtcvad
+from show_progress import show_progress
 from subtimeshift import read_srt_from_file, write_srt_to_file, srt_offset
 
 
@@ -85,30 +86,39 @@ def best_webrtcvad_offset(subtitle_bstring, asegment, sample_rate=100, get_score
     return get_best_offset(subtitle_bstring, media_bstring, get_score=get_score)
 
 def get_wav_audio_segment_from_media(fname):
-    out, _ = (
-            ffmpeg
-            .input(fname)
-            .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=FRAME_RATE)
-            .run(capture_stdout=True, capture_stderr=True)
-    )
+    total_duration = float(ffmpeg.probe(fname)['format']['duration'])
+    print('extracting audio...')
+    with show_progress(total_duration) as socket_fname:
+        out, _ = (
+                ffmpeg
+                .input(fname)
+                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=FRAME_RATE)
+                .global_args('-progress', 'unix://{}'.format(socket_fname))
+                .run(capture_stdout=True, capture_stderr=True)
+        )
+    print('...done')
     return np.frombuffer(out, np.uint8)
 
 def main():
-    reference, subin, subout = [sys.argv[i] for i in range(1,4)]
-    subtitle_bstring = binarize_subtitles(subin)
-    if reference.endswith('srt'):
-        reference_bstring = binarize_subtitles(reference)
-        offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
-    else:
-        asegment = get_wav_audio_segment_from_media(reference)
-        auditok_out = best_auditok_offset(subtitle_bstring, asegment, get_score=True)
-        webrtcvad_out = best_webrtcvad_offset(subtitle_bstring, asegment, get_score=True)
-        print('auditok', auditok_out)
-        print('webrtcvad', webrtcvad_out)
-        offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
-    print('offset seconds: %.3f' % offset_seconds)
-    write_offset_file(subin, subout, offset_seconds)
-    return 0
+    try:
+        reference, subin, subout = [sys.argv[i] for i in range(1,4)]
+        subtitle_bstring = binarize_subtitles(subin)
+        if reference.endswith('srt'):
+            reference_bstring = binarize_subtitles(reference)
+            offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
+        else:
+            asegment = get_wav_audio_segment_from_media(reference)
+            auditok_out = best_auditok_offset(subtitle_bstring, asegment, get_score=True)
+            webrtcvad_out = best_webrtcvad_offset(subtitle_bstring, asegment, get_score=True)
+            print('auditok', auditok_out)
+            print('webrtcvad', webrtcvad_out)
+            offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
+        print('offset seconds: %.3f' % offset_seconds)
+        write_offset_file(subin, subout, offset_seconds)
+        return 0
+    except Exception as e:
+        print(e.stderr, file=sys.stderr)
+        return 1
 
 if __name__ == "__main__":
     logging.basicConfig()
