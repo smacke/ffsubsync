@@ -1,0 +1,1 @@
+from .subsync import main
