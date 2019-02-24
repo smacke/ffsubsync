@@ -1,3 +1,4 @@
+argparse
 auditok
 ffmpeg-python
 numpy
