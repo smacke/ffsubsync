@@ -93,7 +93,7 @@ def make_auditok_detector(sample_rate=100):
 def get_speech_segments_from_media(fname, *speech_detectors):
     total_duration = float(ffmpeg.probe(fname)['format']['duration'])
     media_bstrings = [[] for _ in speech_detectors]
-    print('extracting speech segments...')
+    print('extracting speech segments...', file=sys.stderr)
     process = (
             ffmpeg
             .input(fname)
@@ -113,33 +113,34 @@ def get_speech_segments_from_media(fname, *speech_detectors):
             in_bytes = np.frombuffer(in_bytes, np.uint8)
             for media_bstring, detector in zip(media_bstrings, speech_detectors):
                 media_bstring.append(detector(in_bytes))
-    print('...done.')
+    print('...done.', file=sys.stderr)
     return [np.concatenate(media_bstring) for media_bstring in media_bstrings]
 
-def main():
-    try:
-        reference, subin, subout = [sys.argv[i] for i in range(1,4)]
-        subtitle_bstring = binarize_subtitles(subin)
-        if reference.endswith('srt'):
-            reference_bstring = binarize_subtitles(reference)
-            offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
-        else:
-            auditok_out, webrtcvad_out = get_speech_segments_from_media(
-                    reference, make_auditok_detector(), make_webrtcvad_detector())
-            print('computing alignments...')
-            auditok_out = get_best_offset(subtitle_bstring, auditok_out, get_score=True)
-            webrtcvad_out = get_best_offset(subtitle_bstring, webrtcvad_out, get_score=True)
-            print('...done.')
-            print('auditok', auditok_out)
-            print('webrtcvad', webrtcvad_out)
-            offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
-        print('offset seconds: %.3f' % offset_seconds)
-        write_offset_file(subin, subout, offset_seconds)
-        return 0
-    except Exception as e:
-        print('Exception: %s' % e, file=sys.stderr)
-        return 1
+def main(reference, subin, subout):
+    subtitle_bstring = binarize_subtitles(subin)
+    if reference.endswith('srt'):
+        reference_bstring = binarize_subtitles(reference)
+        offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
+    else:
+        auditok_out, webrtcvad_out = get_speech_segments_from_media(
+                reference, make_auditok_detector(), make_webrtcvad_detector())
+        print('computing alignments...', file=sys.stderr)
+        auditok_out = get_best_offset(subtitle_bstring, auditok_out, get_score=True)
+        webrtcvad_out = get_best_offset(subtitle_bstring, webrtcvad_out, get_score=True)
+        print('...done.', file=sys.stderr)
+        print('auditok', auditok_out, file=sys.stderr)
+        print('webrtcvad', webrtcvad_out, file=sys.stderr)
+        offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
+    print('offset seconds: %.3f' % offset_seconds, file=sys.stderr)
+    write_offset_file(subin, subout, offset_seconds)
+    return 0
 
 if __name__ == "__main__":
     logging.basicConfig()
-    sys.exit(main())
+    parser = argparse.ArgumentParser(description='Align subtitles with video.')
+    parser.add_argument('reference')
+    parser.add_argument('-i', '--srtin', required=True) # TODO: allow read from stdin
+    parser.add_argument('-o', '--srtout', default=None)
+    parser.add_argument('--encoding', default='utf-8')
+    args = parser.parse_args()
+    sys.exit(main(args.reference, args.srtin, args.srtout))

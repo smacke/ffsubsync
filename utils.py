@@ -33,27 +33,38 @@ def read_srt_from_file(fname, encoding='infer'):
     encodings_to_try = (encoding,)
     if encoding == 'infer':
         encodings_to_try = ('utf-8', 'utf-8-sig', 'latin-1')
+    subs = None
+    if fname is None:
+        if sys.version_info[0] > 2:
+            subs = sys.stdin.buffer.read()
+        else:
+            subs = sys.stdin.read()
     exc = None
     for encoding in encodings_to_try:
         try:
-            if sys.version_info[0] > 2:
-                with open(fname, 'r', encoding=encoding) as f:
-                    return srt_parse(f.read())
+            if subs is not None:
+                return srt_parse(subs.decode(encoding))
             else:
-                with open(fname, 'r') as f:
-                    return srt_parse(f.read().decode(encoding))
+                if sys.version_info[0] > 2:
+                    with open(fname, 'r', encoding=encoding) as f:
+                        return srt_parse(f.read())
+                else:
+                    with open(fname, 'r') as f:
+                        return srt_parse(f.read().decode(encoding))
         except Exception as e:
             exc = e
             continue
     raise exc
 
 def write_srt_to_file(fname, subs):
+    if fname is None:
+        return sys.stdout.write(srt.compose(subs))
     if sys.version_info[0] > 2:
         with open(fname, 'w', encoding='utf-8') as f:
-            f.write(srt.compose(subs))
+            return f.write(srt.compose(subs))
     else:
         with open(fname, 'w') as f:
-            f.write(srt.compose(subs).encode('utf-8'))
+            return f.write(srt.compose(subs).encode('utf-8'))
 
 def main():
     td = float(sys.argv[3])
