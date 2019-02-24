@@ -6,15 +6,15 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
-import tempfile
 import numpy as np
-from scipy.io import wavfile
-import sh
+import ffmpeg
 import srt
 from auditok import BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
 import webrtcvad
 from subtimeshift import read_srt_from_file, write_srt_to_file, srt_offset
 
+
+FRAME_RATE=48000
 
 def get_best_offset(s1, s2, get_score=False):
     a, b = map(lambda s: 2*np.array(s).astype(float) - 1, [s1, s2])
@@ -35,17 +35,14 @@ def write_offset_file(fread, fwrite, nseconds):
     write_srt_to_file(fwrite, subs)
 
 def binarize_subtitles(fname, sample_rate=100):
-    samples = []
-    prev_end = timedelta(seconds=0)
-    total_time = 0
+    max_time = 0
     for sub in read_srt_from_file(fname):
-        if prev_end >= sub.start:
-            continue
-        total_time += (sub.end - sub.start).total_seconds()
-        samples.extend([0]*int(round(sample_rate * (sub.start - prev_end).total_seconds())))
-        samples.extend([1]*int(round(sample_rate * (sub.end - sub.start).total_seconds())))
-        prev_end = sub.end
-    return np.array(samples).astype(bool)
+        max_time = max(max_time, sub.end.total_seconds())
+    samples = np.zeros(int(max_time * sample_rate) + 2, dtype=bool)
+    for sub in read_srt_from_file(fname):
+        start, end = [int(round(sample_rate * t.total_seconds())) for t in (sub.start, sub.end)]
+        samples[start:end+1] = True
+    return samples
 
 def best_auditok_offset(subtitle_bstring, asegment, sample_rate=100, get_score=False):
     asource = BufferAudioSource(data_buffer=asegment,
@@ -68,13 +65,10 @@ def best_auditok_offset(subtitle_bstring, asegment, sample_rate=100, get_score=F
     return get_best_offset(subtitle_bstring, media_bstring, get_score=get_score)
 
 def best_webrtcvad_offset(subtitle_bstring, asegment, sample_rate=100, get_score=False):
-    frame_rate = 48000
     vad = webrtcvad.Vad()
     vad.set_mode(3) # set non-speech pruning aggressiveness from 0 to 3
     window_duration = 1./sample_rate # duration in seconds
-    print('num bytes', len(asegment))
-    samples_per_window = int(window_duration * frame_rate + 0.5)
-    print('samples per window', samples_per_window)
+    samples_per_window = int(window_duration * FRAME_RATE + 0.5)
     bytes_per_sample = 2
     media_bstring = []
     failures = 0
@@ -82,28 +76,22 @@ def best_webrtcvad_offset(subtitle_bstring, asegment, sample_rate=100, get_score
         stop = min(start + samples_per_window, len(asegment)//bytes_per_sample)
         try:
             is_speech = vad.is_speech(asegment[start * bytes_per_sample: stop * bytes_per_sample],
-                                      sample_rate=frame_rate)
+                                      sample_rate=FRAME_RATE)
         except:
             is_speech = False
             failures += 1
-        #media_bstring.extend([is_speech]*(stop-start))
         media_bstring.append(is_speech)
-    print('failures', failures)
     media_bstring = np.array(media_bstring)
     return get_best_offset(subtitle_bstring, media_bstring, get_score=get_score)
 
 def get_wav_audio_segment_from_media(fname):
-    with tempfile.NamedTemporaryFile(suffix='.wav') as tmp:
-        wavname = tmp.name
-    try:
-        sh.ffmpeg('-i', fname, '-vn', '-acodec', 'pcm_s16le', '-ar', '48000', '-ac', '1', wavname)
-        frame_rate, samples = wavfile.read(wavname)
-        if frame_rate != 48000:
-            raise Exception('Unexpected frame rate: %d' % frame_rate)
-        #return struct.pack('%dh' % len(samples), *samples)
-        return samples.data
-    finally:
-        os.unlink(wavname)
+    out, _ = (
+            ffmpeg
+            .input(fname)
+            .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=FRAME_RATE)
+            .run(capture_stdout=True, capture_stderr=True)
+    )
+    return np.frombuffer(out, np.uint8)
 
 def main():
     reference, subin, subout = [sys.argv[i] for i in range(1,4)]

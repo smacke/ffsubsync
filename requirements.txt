@@ -1,6 +1,5 @@
-numpy
-scipy
-sh
-srt
 auditok
+ffmpeg-python
+numpy
+srt
 webrtcvad

@@ -17,7 +17,7 @@ def srt_offset(subs, td_seconds):
 def read_srt_from_file(fname, encoding='infer'):
     encodings_to_try = (encoding,)
     if encoding == 'infer':
-        encodings_to_try = ('utf-8', 'utf-8-sig')
+        encodings_to_try = ('utf-8', 'utf-8-sig', 'latin-1')
     exc = None
     for encoding in encodings_to_try:
         try:
@@ -30,9 +30,7 @@ def read_srt_from_file(fname, encoding='infer'):
         except Exception as e:
             exc = e
             continue
-        break
-    else:
-        raise exc
+    raise exc
 
 def write_srt_to_file(fname, subs):
     if sys.version_info[0] > 2:
