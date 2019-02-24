@@ -1,0 +1,6 @@
+numpy
+scipy
+sh
+srt
+auditok
+webrtcvad
