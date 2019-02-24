@@ -12,7 +12,7 @@ import srt
 import tqdm
 from auditok import BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
 import webrtcvad
-from subtimeshift import read_srt_from_file, write_srt_to_file, srt_offset
+from utils import read_srt_from_file, write_srt_to_file, srt_offset
 
 
 FRAME_RATE=48000
