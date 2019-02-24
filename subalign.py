@@ -81,7 +81,6 @@ def make_auditok_detector(sample_rate=100):
         ads = ADSFactory.ads(audio_source=asource, block_dur=1./sample_rate)
         ads.open()
         tokens = tokenizer.tokenize(ads)
-        #length = max(token[2] for token in tokens) + 1
         length = (len(asegment)//bytes_per_sample + samples_per_window - 1)//samples_per_window
         media_bstring = np.zeros(length+1, dtype=int)
         for token in tokens:
@@ -100,18 +99,20 @@ def get_speech_segments_from_media(fname, *speech_detectors):
             .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=FRAME_RATE)
             .run_async(pipe_stdout=True, quiet=True)
     )
-    samples_per_window = 2 * FRAME_RATE // 100
+    bytes_per_frame = 2
+    sample_rate = 100
+    samples_per_window = bytes_per_frame * FRAME_RATE // sample_rate
     windows_per_buffer = 10000
     with tqdm.tqdm(total=total_duration) as pbar:
         while True:
             in_bytes = process.stdout.read(samples_per_window * windows_per_buffer)
             if not in_bytes:
                 break
-            pbar.update(0.5 * len(in_bytes) / FRAME_RATE)
+            pbar.update(len(in_bytes) / float(bytes_per_frame) / FRAME_RATE)
             in_bytes = np.frombuffer(in_bytes, np.uint8)
             for media_bstring, detector in zip(media_bstrings, speech_detectors):
                 media_bstring.append(detector(in_bytes))
-    print('...done')
+    print('...done.')
     return [np.concatenate(media_bstring) for media_bstring in media_bstrings]
 
 def main():
@@ -124,8 +125,10 @@ def main():
         else:
             auditok_out, webrtcvad_out = get_speech_segments_from_media(
                     reference, make_auditok_detector(), make_webrtcvad_detector())
+            print('computing alignments...')
             auditok_out = get_best_offset(subtitle_bstring, auditok_out, get_score=True)
             webrtcvad_out = get_best_offset(subtitle_bstring, webrtcvad_out, get_score=True)
+            print('...done.')
             print('auditok', auditok_out)
             print('webrtcvad', webrtcvad_out)
             offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
