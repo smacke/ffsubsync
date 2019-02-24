@@ -12,18 +12,18 @@ history = read_file('HISTORY.rst')
 requirements = read_file('requirements.txt').strip().split()
 
 setup(
-    name='subalign',
+    name='subsync',
     version='0.1.0',
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
     description='Synchronize subtitles with video with speech extraction, even across different languages.',
     long_description=read_file('README.md'),
-    url='https://github.com/smacke/subalign',
+    url='https://github.com/smacke/subsync',
     packages=find_packages(exclude=['docs']),
     include_package_data=True,
     install_requires=requirements,
     entry_points={
-        'console_scripts': ['subalign = subalign:main'],
+        'console_scripts': ['subsync = subsync:main'],
     },
     # license='Apache License 2.0', # TODO: does this have to be (L)GPL because of libs?
     zip_safe=False,
