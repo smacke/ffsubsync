@@ -64,6 +64,13 @@ for building VLC from source. *Warning: this is not easy.*
 You should now be able to autosynchronize subtitles using the hotkey `Ctrl+Shift+S`
 (only enabled while subtitles are present).
 
+# Speed
+My experience is that `subsync` usually finishes running in 20 to 30 seconds,
+depending on the length of the video. The most expensive step is actually
+extraction of raw audio. If you already have a correctly synchronized "reference" srt
+file (in which case the video is no longer necessary),
+`subsync` typically runs in less than a second.
+
 # How It Works
 The synchronization algorithm operates in 3 steps:
 1. Discretize video and subtitles by time into 10ms windows.
