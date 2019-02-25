@@ -21,7 +21,7 @@ QUIET=False
 
 def say(*args, **kwargs):
     if QUIET: return
-    print(*args **kwargs)
+    print(*args, **kwargs)
 
 def get_best_offset(s1, s2, get_score=False):
     a, b = map(lambda s: 2*np.array(s).astype(float) - 1, [s1, s2])
