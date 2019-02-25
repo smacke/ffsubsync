@@ -1,5 +1,6 @@
 # subsync
-Automagically synchronize subtitles with video, aligning them to the correct starting point.
+Language-agnostic automatic synchronization of subtitles to video,
+so that subtitles are aligned to the correct starting point within the video.
 
 **_This is my submission for HackIllinois 2019._**
 
@@ -39,7 +40,7 @@ Whether to perform voice activity detection on the audio or to directly extract 
 # VLC Integration
 To demonstrate how one might use subsync seamlessly with real video software,
 we developed a prototype integration into the popular [VLC](https://www.videolan.org/vlc/index.html)
-media player, which was demoed during the Hackillinois 2019 project expo. The resulting patch
+media player, which was demoed during the HackillInois 2019 project expo. The resulting patch
 can be found in the file [subsync-vlc.patch](https://github.com/smacke/subsync/raw/master/subsync-vlc.patch).
 Here are instructions for how to use it.
 
@@ -60,6 +61,24 @@ for building VLC from source. *Warning: this is not easy.*
 
 You should now be able to autosynchronize subtitles using the hotkey `Ctrl+Shift+S`
 (only enabled while subtitles are present).
+
+# How It Works
+The synchronization algorithm operates in 3 steps:
+1. Discretize video and subtitles by time into 10ms windows.
+2. For each 10ms window, determine whether that window contains speech.
+   This is trivial to do for subtitles (we just determine whether any subtitle is "on" during each time window);
+   for video, use an off-the-shelf voice audio detector (VAD) like
+   the one built into [webrtc](https://webrtc.org/).
+3. Now we have two binary strings: one for the subtitles, and one for the video.
+   Try to align these strings by matching 0's with 0's and 1's with 1's. We score
+   these alignments as (# matching digits) - (# mismatched digits).
+
+The resulting alignment from step 3 determines how to offset the subtitles in time
+so that they are properly aligned with the video. Because the binary strings
+are fairly long (millions of digits for video longer than an hour), the naive
+O(n^2) strategy for scoring all alignments is unacceptable. Instead, we use the
+fact that "scoring all alignments" is a convolution operation and can be implemented
+with the Fast Fourier Transform (FFT), bringing the complexity down to O(n log n).
 
 # Future Work
 The prototype VLC patch is very experimental -- it was developed under pressure
