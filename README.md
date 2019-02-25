@@ -31,7 +31,7 @@ or
 subsync video.mp4 -i unsynchronized.srt -o synchronized.srt
 ~~~
 
-Although it can usually work if all you have is the video file, it will be faster (and potentially more accurate) if you have a correctly synchronized "reference" srt file, in which case you can do the following:
+Although it can usually work if all you have is the video file, there may be occasions where you have a correctly synchronized "reference" srt file in a language you are unfamiliar with, as well as an unsynchronized srt file in your native language.  In this case, it will be faster to do the following:
 
 ~~~
 subsync reference.srt -i unsynchronized.srt -o synchronized.srt
