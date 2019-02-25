@@ -82,11 +82,22 @@ O(n^2) strategy for scoring all alignments is unacceptable. Instead, we use the
 fact that "scoring all alignments" is a convolution operation and can be implemented
 with the Fast Fourier Transform (FFT), bringing the complexity down to O(n log n).
 
+# Does it work?
+I have yet to find a case where the automatic synchronization has been off by
+more than ~1 second. If the reference is another subtitle file, I think it should
+work every time. I would expect that it could fail sometimes when the reference is
+a video since speech extraction is a noisier process, but I have not found any
+bad cases yet (currently tested on ~10 videos more than 30 minutes in length).
+
 # Future Work
 The prototype VLC patch is very experimental -- it was developed under pressure
 and just barely works. I would love to see this project more robustly
 integrated with VLC, either directly in the VLC core, or as a plugin.
 If you or anyone you know has ideas for how to accomplish this, please let me know!
+
+Also: although I have not found cases where the synchronization algorithm fails, this does
+not mean they don't exist. It would be good to find these cases so as to better understand
+the algorithm's pain points.
 
 # Credits
 This project would not be possible without the following libraries:
