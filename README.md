@@ -2,7 +2,9 @@
 Language-agnostic automatic synchronization of subtitles to video,
 so that subtitles are aligned to the correct starting point within the video.
 
-**_This is my submission for HackIllinois 2019._**
+The implementation for this project was started during HackIllinois 2019,
+for which it received an **_Honorable Mention_**
+(ranked in the top 5 projects, excluding projects that won company-specific prizes).
 
 Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
@@ -73,8 +75,8 @@ The synchronization algorithm operates in 3 steps:
    Try to align these strings by matching 0's with 0's and 1's with 1's. We score
    these alignments as (# matching digits) - (# mismatched digits).
 
-The resulting alignment from step 3 determines how to offset the subtitles in time
-so that they are properly aligned with the video. Because the binary strings
+The best-scoring alignment from step 3 determines how to offset the subtitles in time
+so that they are properly synced with the video. Because the binary strings
 are fairly long (millions of digits for video longer than an hour), the naive
 O(n^2) strategy for scoring all alignments is unacceptable. Instead, we use the
 fact that "scoring all alignments" is a convolution operation and can be implemented
@@ -82,8 +84,9 @@ with the Fast Fourier Transform (FFT), bringing the complexity down to O(n log n
 
 # Future Work
 The prototype VLC patch is very experimental -- it was developed under pressure
-and just barely works. The clear next step for this project is a more robust
-integration with VLC, either directly in the VLC core, or as a plugin.
+and just barely works. I would love to see this project more robustly
+integrated with VLC, either directly in the VLC core, or as a plugin.
+If you or anyone you know has ideas for how to accomplish this, please let me know!
 
 # Credits
 This project would not be possible without the following libraries:
