@@ -57,12 +57,11 @@ def read_srt_from_file(fname, encoding='infer'):
     raise exc
 
 def write_srt_to_file(fname, subs):
-    output_file = fname or sys.stdout.fileno()
     if sys.version_info[0] > 2:
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(fname or sys.stdout.fileno(), 'w', encoding='utf-8') as f:
             return f.write(srt.compose(subs))
     else:
-        with open(output_file, 'w') as f:
+        with (fname and open(fname, 'w')) or sys.stdout as f:
             return f.write(srt.compose(subs).encode('utf-8'))
 
 def main():
