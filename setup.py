@@ -13,7 +13,7 @@ requirements = read_file('requirements.txt').strip().split()
 
 setup(
     name='subsync',
-    version='0.1.1',
+    version='0.1.2',
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
     description='Synchronize subtitles with video with speech extraction, even across different languages.',
@@ -25,7 +25,7 @@ setup(
     entry_points={
         'console_scripts': ['subsync = subsync:main'],
     },
-    # license='Apache License 2.0', # TODO: does this have to be (L)GPL because of libs?
+    license='MIT',
     zip_safe=False,
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
