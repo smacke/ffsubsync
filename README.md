@@ -76,7 +76,7 @@ The synchronization algorithm operates in 3 steps:
 1. Discretize video and subtitles by time into 10ms windows.
 2. For each 10ms window, determine whether that window contains speech.
    This is trivial to do for subtitles (we just determine whether any subtitle is "on" during each time window);
-   for video, use an off-the-shelf voice audio detector (VAD) like
+   for video, use an off-the-shelf voice activity detector (VAD) like
    the one built into [webrtc](https://webrtc.org/).
 3. Now we have two binary strings: one for the subtitles, and one for the video.
    Try to align these strings by matching 0's with 0's and 1's with 1's. We score
@@ -89,7 +89,7 @@ O(n^2) strategy for scoring all alignments is unacceptable. Instead, we use the
 fact that "scoring all alignments" is a convolution operation and can be implemented
 with the Fast Fourier Transform (FFT), bringing the complexity down to O(n log n).
 
-# Does it work?
+# Does It Work?
 I have yet to find a case where the automatic synchronization has been off by
 more than ~1 second. If the reference is another subtitle file, I think it should
 work every time. I would expect that it could fail sometimes when the reference is
@@ -116,4 +116,4 @@ This project would not be possible without the following libraries:
 - Other excellent Python libraries like [argparse](https://docs.python.org/3/library/argparse.html) and [tqdm](https://tqdm.github.io/), not related to the core functionality, but which enable much better experiences for developers and users.
 
 # License
-Code in this project is [MIT Licensed](https://opensource.org/licenses/MIT).
+Code in this project is [MIT licensed](https://opensource.org/licenses/MIT).
