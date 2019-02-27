@@ -42,7 +42,7 @@ Whether to perform voice activity detection on the audio or to directly extract 
 # VLC Integration
 To demonstrate how one might use subsync seamlessly with real video software,
 we developed a prototype integration into the popular [VLC](https://www.videolan.org/vlc/index.html)
-media player, which was demoed during the HackIllInois 2019 project expo. The resulting patch
+media player, which was demoed during the HackIllinois 2019 project expo. The resulting patch
 can be found in the file [subsync-vlc.patch](https://github.com/smacke/subsync/raw/master/subsync-vlc.patch).
 Here are instructions for how to use it.
 
