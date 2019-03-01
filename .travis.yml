@@ -1,0 +1,18 @@
+language: python
+python:
+  - "2.7"
+  - "3.4"
+  - "3.5"
+  - "3.6"
+  - "3.7"
+install:
+  - pip install -r requirements.txt
+  - pip install -r requirements-dev.txt
+addons:
+  apt:
+    update: true
+    packages: ffmpeg
+  homebrew:
+    packages: ffmpeg
+script:
+  - pytest

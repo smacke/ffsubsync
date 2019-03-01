@@ -1,4 +1,6 @@
 # subsync
+[![Build Status](https://travis-ci.org/smacke/subsync.png?branch=master)](https://travis-ci.org/smacke/subsync)
+
 Language-agnostic automatic synchronization of subtitles to video,
 so that subtitles are aligned to the correct starting point within the video.
 
@@ -15,7 +17,7 @@ First, make sure ffmpeg is installed. On MacOS, this looks like:
 ~~~
 brew install ffmpeg
 ~~~
-Next, grab the script. It should work with both Python2 and Python3:
+Next, grab the script. It should work with both Python 2 and Python 3:
 ~~~
 pip install git+https://github.com/smacke/subsync
 ~~~

@@ -13,10 +13,10 @@ requirements = read_file('requirements.txt').strip().split()
 
 setup(
     name='subsync',
-    version='0.1.4',
+    version='0.1.5',
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
-    description='Synchronize subtitles with video with speech extraction, even across different languages.',
+    description='Synchronize subtitles with video via speech detection, even across different languages.',
     long_description=read_file('README.md'),
     url='https://github.com/smacke/subsync',
     packages=find_packages(exclude=['docs']),
@@ -37,6 +37,7 @@ setup(
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
 )
 
