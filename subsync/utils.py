@@ -14,6 +14,7 @@ def srt_offset(subs, td_seconds):
                            end=sub.end+td_seconds,
                            content=sub.content)
 
+
 def srt_parse(s, tolerant=True):
     subs = srt.parse(s)
     subs_list = []
@@ -28,6 +29,7 @@ def srt_parse(s, tolerant=True):
         except StopIteration:
             break
     return subs_list
+
 
 def read_srt_from_file(fname, encoding='infer'):
     encodings_to_try = (encoding,)
@@ -56,6 +58,7 @@ def read_srt_from_file(fname, encoding='infer'):
             continue
     raise exc
 
+
 def write_srt_to_file(fname, subs):
     if sys.version_info[0] > 2:
         with open(fname or sys.stdout.fileno(), 'w', encoding='utf-8') as f:
@@ -64,11 +67,13 @@ def write_srt_to_file(fname, subs):
         with (fname and open(fname, 'w')) or sys.stdout as f:
             return f.write(srt.compose(subs).encode('utf-8'))
 
+
 def main():
     td = float(sys.argv[3])
     subs = read_srt_from_file(sys.argv[1])
     write_srt_to_file(sys.argv[2], srt_offset(subs, timedelta(seconds=td)))
     return 0
+
 
 if __name__=="__main__":
     logging.basicConfig()
