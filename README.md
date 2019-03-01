@@ -1,6 +1,6 @@
 # subsync
 
-[![Build Status](https://travis-ci.org/smacke/subsync.png?branch=master)](https://travis-ci.org/smacke/subsync)
+[![Build Status](https://travis-ci.org/smacke/subsync.svg?branch=master)](https://travis-ci.org/smacke/subsync)
 
 Language-agnostic automatic synchronization of subtitles to video,
 so that subtitles are aligned to the correct starting point within the video.
