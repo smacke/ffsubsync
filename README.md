@@ -1,4 +1,5 @@
 # subsync
+
 [![Build Status](https://travis-ci.org/smacke/subsync.png?branch=master)](https://travis-ci.org/smacke/subsync)
 
 Language-agnostic automatic synchronization of subtitles to video,
