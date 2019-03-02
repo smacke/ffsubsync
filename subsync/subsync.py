@@ -23,18 +23,22 @@ def say(*args, **kwargs):
     print(*args, **kwargs)
 
 
-def get_best_offset(s1, s2, get_score=False):
-    a, b = map(lambda s: 2*np.array(s).astype(float) - 1, [s1, s2])
-    total_length = int(2**math.ceil(math.log(len(a) + len(b), 2)))
-    extra_zeros = total_length - len(a) - len(b)
-    convolve = np.fft.ifft(np.fft.fft(np.append(np.zeros(extra_zeros + len(b)), a)) * np.fft.fft(
-        np.flip(np.append(b, np.zeros(len(a) + extra_zeros)), 0)))
+def get_best_offset(substring, vidstring, get_score=False):
+    if isinstance(substring, str):
+        substring = [int(c) for c in substring]
+    if isinstance(vidstring, str):
+        vidstring = [int(c) for c in vidstring]
+    substring, vidstring = map(lambda s: 2*np.array(s).astype(float) - 1, [substring, vidstring])
+    total_length = int(2**math.ceil(math.log(len(substring) + len(vidstring), 2)))
+    extra_zeros = total_length - len(substring) - len(vidstring)
+    convolve = np.fft.ifft(np.fft.fft(np.append(np.zeros(extra_zeros + len(vidstring)), substring)) * np.fft.fft(
+        np.flip(np.append(vidstring, np.zeros(len(substring) + extra_zeros)), 0)))
     convolve = np.real(convolve)
     best_idx = np.argmax(convolve)
     if get_score:
-        return convolve[best_idx], len(convolve)-1 - best_idx - len(a)
+        return convolve[best_idx], len(convolve)-1 - best_idx - len(substring)
     else:
-        return len(convolve)-1 - best_idx - len(a)
+        return len(convolve)-1 - best_idx - len(substring)
 
 
 def write_offset_file(fread, fwrite, nseconds):
@@ -56,7 +60,7 @@ def binarize_subtitles(fname, sample_rate=100):
 
 def make_webrtcvad_detector(sample_rate=100):
     vad = webrtcvad.Vad()
-    vad.set_mode(3) # set non-speech pruning aggressiveness from 0 to 3
+    vad.set_mode(3)  # set non-speech pruning aggressiveness from 0 to 3
     window_duration = 1./sample_rate # duration in seconds
     frames_per_window = int(window_duration * FRAME_RATE + 0.5)
     bytes_per_frame = 2
