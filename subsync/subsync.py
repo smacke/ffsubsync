@@ -24,10 +24,7 @@ def say(*args, **kwargs):
 
 
 def get_best_offset(substring, vidstring, get_score=False):
-    if isinstance(substring, str):
-        substring = [int(c) for c in substring]
-    if isinstance(vidstring, str):
-        vidstring = [int(c) for c in vidstring]
+    substring, vidstring = [list(map(int, s)) if isinstance(s, str) else s for s in [substring, vidstring]]
     substring, vidstring = map(lambda s: 2*np.array(s).astype(float) - 1, [substring, vidstring])
     total_length = int(2**math.ceil(math.log(len(substring) + len(vidstring), 2)))
     extra_zeros = total_length - len(substring) - len(vidstring)
