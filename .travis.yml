@@ -18,12 +18,12 @@ install:
   - pip install -r requirements-dev.txt
   - pip install -e .
 
-addons:
-  apt:
-    update: true
-    packages: ffmpeg
-  homebrew:
-    packages: ffmpeg
+#addons:
+#  apt:
+#    update: true
+#    packages: ffmpeg
+#  homebrew:
+#    packages: ffmpeg
 
 script:
   - pytest -v tests/
