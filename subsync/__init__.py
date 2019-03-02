@@ -1,1 +1,1 @@
-from .subsync import main, get_best_offset
+from .subsync import main

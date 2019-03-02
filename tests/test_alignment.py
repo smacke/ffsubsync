@@ -1,5 +1,5 @@
 import pytest
-import subsync
+import subsync.subsync as subsync
 
 
 @pytest.mark.parametrize('s1, s2, true_offset', [
