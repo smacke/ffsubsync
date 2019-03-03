@@ -5,6 +5,7 @@ import argparse
 import math
 import logging
 import sys
+import threading
 import numpy as np
 import ffmpeg
 import tqdm
@@ -111,8 +112,9 @@ def get_speech_segments_from_media(fname, progress_only, *speech_detectors):
             ffmpeg
             .input(fname)
             .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=FRAME_RATE)
-            .run_async(pipe_stdout=True, quiet=True)
+            .run_async(pipe_stdout=True, pipe_stderr=True)
     )
+    threading.Thread(target=lambda: process.stderr.read()).start()
     bytes_per_frame = 2
     sample_rate = 100
     frames_per_window = bytes_per_frame * FRAME_RATE // sample_rate

@@ -13,7 +13,7 @@ requirements = read_file('requirements.txt').strip().split()
 
 setup(
     name='subsync',
-    version='0.1.5',
+    version='0.1.6',
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
     description='Synchronize subtitles with video via speech detection, even across different languages.',
