@@ -1,6 +1,7 @@
 argparse
 auditok
 ffmpeg-python
+future
 numpy>=1.12.0
 srt
 tqdm

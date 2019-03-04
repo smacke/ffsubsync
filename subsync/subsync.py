@@ -13,6 +13,7 @@ from auditok import \
     BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
 import webrtcvad
 from .utils import read_srt_from_file, write_srt_to_file, srt_offset
+from .version import __version__
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -156,6 +157,8 @@ def get_speech_segments_from_media(fname, progress_only, *speech_detectors):
 def main():
     parser = argparse.ArgumentParser(
         description='Synchronize subtitles with video.')
+    parser.add_argument('-v', '--version', action='version',
+                        version='%(prog)s {version}'.format(version=__version__))
     parser.add_argument('reference')
     parser.add_argument('-i', '--srtin', required=True)  # TODO: allow read from stdin
     parser.add_argument('-o', '--srtout', default=None)

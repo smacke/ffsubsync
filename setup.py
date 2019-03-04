@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 from setuptools import setup, find_packages
 
 
@@ -10,12 +11,12 @@ def read_file(fname):
 
 
 history = read_file('HISTORY.rst')
-
 requirements = read_file('requirements.txt').strip().split()
-
+pkg_name = 'subsync'
+exec(read_file(os.path.join(pkg_name, 'version.py')))
 setup(
-    name='subsync',
-    version='0.1.6',
+    name=pkg_name,
+    version=__version__,  # noqa
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
     description='Language-agnostic synchronization of subtitles with video via speech detection.',
@@ -32,6 +33,7 @@ setup(
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
