@@ -13,15 +13,10 @@ from auditok import BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamT
 import webrtcvad
 from .utils import read_srt_from_file, write_srt_to_file, srt_offset
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 FRAME_RATE = 48000
-QUIET = False
-
-
-def say(*args, **kwargs):
-    if QUIET:
-        return
-    print(*args, **kwargs)
 
 
 def get_best_offset(substring, vidstring, get_score=False):
@@ -59,7 +54,7 @@ def binarize_subtitles(fname, sample_rate=100):
 def make_webrtcvad_detector(sample_rate=100):
     vad = webrtcvad.Vad()
     vad.set_mode(3)  # set non-speech pruning aggressiveness from 0 to 3
-    window_duration = 1./sample_rate # duration in seconds
+    window_duration = 1./sample_rate  # duration in seconds
     frames_per_window = int(window_duration * FRAME_RATE + 0.5)
     bytes_per_frame = 2
 
@@ -107,7 +102,7 @@ def make_auditok_detector(sample_rate=100):
 def get_speech_segments_from_media(fname, progress_only, *speech_detectors):
     total_duration = float(ffmpeg.probe(fname)['format']['duration'])
     media_bstrings = [[] for _ in speech_detectors]
-    say('extracting speech segments...', file=sys.stderr)
+    logger.info('extracting speech segments...')
     process = (
             ffmpeg
             .input(fname)
@@ -134,12 +129,11 @@ def get_speech_segments_from_media(fname, progress_only, *speech_detectors):
             in_bytes = np.frombuffer(in_bytes, np.uint8)
             for media_bstring, detector in zip(media_bstrings, speech_detectors):
                 media_bstring.append(detector(in_bytes))
-    say('...done.', file=sys.stderr)
+    logger.info('...done.')
     return [np.concatenate(media_bstring) for media_bstring in media_bstrings]
 
 
 def main():
-    logging.basicConfig()
     parser = argparse.ArgumentParser(description='Synchronize subtitles with video.')
     parser.add_argument('reference')
     parser.add_argument('-i', '--srtin', required=True)  # TODO: allow read from stdin
@@ -147,8 +141,7 @@ def main():
     parser.add_argument('--progress-only', action='store_true')
     args = parser.parse_args()
     if args.progress_only:
-        global QUIET
-        QUIET = True
+        logger.setLevel(logging.CRITICAL)
     subtitle_bstring = binarize_subtitles(args.srtin)
     if args.reference.endswith('srt'):
         reference_bstring = binarize_subtitles(args.reference)
@@ -160,14 +153,14 @@ def main():
                 make_auditok_detector(),
                 make_webrtcvad_detector()
         )
-        say('computing alignments...', file=sys.stderr)
+        logger.info('computing alignments...')
         auditok_out = get_best_offset(subtitle_bstring, auditok_out, get_score=True)
         webrtcvad_out = get_best_offset(subtitle_bstring, webrtcvad_out, get_score=True)
-        say('...done.', file=sys.stderr)
-        say('auditok', auditok_out, file=sys.stderr)
-        say('webrtcvad', webrtcvad_out, file=sys.stderr)
+        logger.info('...done.')
+        logger.info('auditok: %s', auditok_out)
+        logger.info('webrtcvad: %s', webrtcvad_out)
         offset_seconds = max(auditok_out, webrtcvad_out)[1] / 100.
-    say('offset seconds: %.3f' % offset_seconds, file=sys.stderr)
+    logger.info('offset seconds: %.3f', offset_seconds)
     if not (args.progress_only and args.srtout is None):
         write_offset_file(args.srtin, args.srtout, offset_seconds)
     return 0
