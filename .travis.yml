@@ -27,3 +27,4 @@ install:
 
 script:
   - pytest -v tests/
+  - flake8 . --exit-zero
