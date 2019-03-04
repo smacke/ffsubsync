@@ -3,9 +3,11 @@
 
 from setuptools import setup, find_packages
 
+
 def read_file(fname):
     with open(fname, 'r') as f:
         return f.read()
+
 
 history = read_file('HISTORY.rst')
 
@@ -16,7 +18,7 @@ setup(
     version='0.1.6',
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
-    description='Synchronize subtitles with video via speech detection, even across different languages.',
+    description='Language-agnostic synchronization of subtitles with video via speech detection.',
     long_description=read_file('README.md'),
     url='https://github.com/smacke/subsync',
     packages=find_packages(exclude=['docs']),
@@ -32,7 +34,7 @@ setup(
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',        
+        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
