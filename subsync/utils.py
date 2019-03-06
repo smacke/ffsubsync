@@ -34,25 +34,17 @@ def srt_parse(s, tolerant=True):
 def read_srt_from_file(fname, encoding='infer'):
     encodings_to_try = (encoding,)
     if encoding == 'infer':
-        encodings_to_try = ('utf-8', 'utf-8-sig', 'latin-1')
-    subs = None
-    if fname is None:
-        if sys.version_info[0] > 2:
-            subs = sys.stdin.buffer.read()
-        else:
-            subs = sys.stdin.read()
+        encodings_to_try = ('utf-8', 'utf-8-sig', 'chinese', 'latin-1')
+    if sys.version_info[0] > 2:
+        with open(fname or sys.stdin.fileno(), 'r') as f:
+            subs = f.buffer.read()
+    else:
+        with (fname and open(fname, 'r')) or sys.stdin as f:
+            subs = f.read()
     exc = None
     for encoding in encodings_to_try:
         try:
-            if subs is not None:
-                return srt_parse(subs.decode(encoding))
-            else:
-                if sys.version_info[0] > 2:
-                    with open(fname, 'r', encoding=encoding) as f:
-                        return srt_parse(f.read())
-                else:
-                    with open(fname, 'r') as f:
-                        return srt_parse(f.read().decode(encoding))
+            return srt_parse(subs.decode(encoding).strip())
         except Exception as e:
             exc = e
             continue

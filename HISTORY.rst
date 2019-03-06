@@ -13,3 +13,8 @@ History
 * Misc bugfixes;
 * Proper logging;
 * Proper version handling;
+
+0.1.7 (2019-03-05)
+------------------
+* Add Chinese to the list of encodings that can be inferred;
+* Make srt parsing more robust;
