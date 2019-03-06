@@ -10,8 +10,8 @@ def srt_offset(subs, td_seconds):
         td_seconds = timedelta(seconds=td_seconds)
     for sub in subs:
         yield srt.Subtitle(index=sub.index,
-                           start=sub.start+td_seconds,
-                           end=sub.end+td_seconds,
+                           start=sub.start + td_seconds,
+                           end=sub.end + td_seconds,
                            content=sub.content)
 
 

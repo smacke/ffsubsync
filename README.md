@@ -1,6 +1,7 @@
 # subsync
 
 [![Build Status](https://travis-ci.org/smacke/subsync.svg?branch=master)](https://travis-ci.org/smacke/subsync)
+[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
 Language-agnostic automatic synchronization of subtitles with video,
 so that subtitles are aligned to the correct starting point within the video.
@@ -83,7 +84,7 @@ The synchronization algorithm operates in 3 steps:
    the one built into [webrtc](https://webrtc.org/).
 3. Now we have two binary strings: one for the subtitles, and one for the video.
    Try to align these strings by matching 0's with 0's and 1's with 1's. We score
-   these alignments as (# matching digits) - (# mismatched digits).
+   these alignments as (# video 1's matched w/ subtitle 1's) - (# video 1's matched with subtitle 0's).
 
 The best-scoring alignment from step 3 determines how to offset the subtitles in time
 so that they are properly synced with the video. Because the binary strings
@@ -113,7 +114,6 @@ the algorithm's pain points.
 This project would not be possible without the following libraries:
 - [ffmpeg](https://www.ffmpeg.org/) and the [ffmpeg-python](https://github.com/kkroening/ffmpeg-python) wrapper, for extracting raw audio from video
 - VAD from [webrtc](https://webrtc.org/) and the [py-webrtcvad](https://github.com/wiseman/py-webrtcvad) wrapper, for speech detection
-- [auditok](https://pypi.org/project/auditok/), for backup audio detection if webrtcvad misbehaves
 - [srt](https://pypi.org/project/srt/) for operating on [SRT files](https://en.wikipedia.org/wiki/SubRip#SubRip_text_file_format)
 - [numpy](http://www.numpy.org/) and, indirectly, [FFTPACK](https://www.netlib.org/fftpack/), which powers the FFT-based algorithm for fast scoring of alignments between subtitles (or subtitles and video).
 - Other excellent Python libraries like [argparse](https://docs.python.org/3/library/argparse.html) and [tqdm](https://tqdm.github.io/), not related to the core functionality, but which enable much better experiences for developers and users.

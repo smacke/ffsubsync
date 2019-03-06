@@ -18,3 +18,8 @@ History
 ------------------
 * Add Chinese to the list of encodings that can be inferred;
 * Make srt parsing more robust;
+
+0.2.0 (2019-03-056
+------------------
+* Get rid of auditok (GPLv3, was hurting alignment algorithm);
+* Change to alignment algo: don't penalize matching video non-speech with subtitle speech;
