@@ -57,7 +57,8 @@ class MaxScoreAligner(TransformerMixin):
             vidstrings = [vidstrings]
         for substring in substrings:
             for vidstring in vidstrings:
-                self._scores.append(self.base_aligner.fit_transform(substring, vidstring, get_score=True))
+                self._scores.append(self.base_aligner.fit_transform(
+                    substring, vidstring, get_score=True))
         logger.info('...done')
         return self
 

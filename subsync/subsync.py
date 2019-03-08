@@ -28,15 +28,18 @@ def main():
     parser = argparse.ArgumentParser(description='Synchronize subtitles with video.')
     parser.add_argument('-v', '--version', action='version',
                         version='%(prog)s {version}'.format(version=__version__))
-    parser.add_argument('reference', help='Correct reference (video or srt) to which to sync input subtitles.')
+    parser.add_argument('reference',
+                        help='Correct reference (video or srt) to which to sync input subtitles.')
     parser.add_argument('-i', '--srtin', help='Input subtitles file (default=stdin).')
     parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
     parser.add_argument('--encoding', default='infer',
                         help='What encoding to use for reading input subtitles.')
     parser.add_argument('--output-encoding', default='same',
-                        help='What encoding to use for writing output subtitles (default=same as for input).')
+                        help='What encoding to use for writing output subtitles '
+                             '(default=same as for input).')
     parser.add_argument('--reference-encoding',
-                        help='What encoding to use for reading / writing reference subtitles (if applicable).')
+                        help='What encoding to use for reading / writing reference subtitles '
+                             '(if applicable).')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.vlc_mode:

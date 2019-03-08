@@ -77,7 +77,8 @@ class VideoSpeechTransformer(TransformerMixin):
                 for media_bstring, detector in zip(media_bstrings, speech_detectors):
                     media_bstring.append(detector(in_bytes))
         logger.info('...done.')
-        self.video_speech_results_ = [np.concatenate(media_bstring) for media_bstring in media_bstrings]
+        self.video_speech_results_ = [np.concatenate(media_bstring)
+                                      for media_bstring in media_bstrings]
         return self
 
     def transform(self, *_):
