@@ -65,7 +65,7 @@ index 91ebde8..ab93d9e 100644
 +//            DisplayMessage(p_vout, "%s", subname_buff);
 +            fclose(vidname_fp);
 +            fclose(subname_fp);
-+            snprintf(strbuff, 4096, "subsync \"%s\" -i \"%s\" -o %s/.vlc/synchronized.srt --progress-only",
++            snprintf(strbuff, 4096, "subsync \"%s\" -i \"%s\" -o %s/.vlc/synchronized.srt --vlc-mode",
 +                    vidname_buff, subname_buff, home);
 +            FILE* output = popen(strbuff, "r");
 +            if (output == NULL) {

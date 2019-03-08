@@ -43,10 +43,10 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
 
 
 class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, sample_rate, frame_rate, progress_only=False):
+    def __init__(self, sample_rate, frame_rate, vlc_mode=False):
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
-        self.progress_only = progress_only
+        self.vlc_mode = vlc_mode
 
     def transform(self, fname, *_):
         total_duration = float(ffmpeg.probe(fname)['format']['duration'])
@@ -63,7 +63,7 @@ class VideoSpeechTransformer(TransformerMixin):
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate
         windows_per_buffer = 10000
         simple_progress = 0.
-        with tqdm.tqdm(total=total_duration, disable=self.progress_only) as pbar:
+        with tqdm.tqdm(total=total_duration, disable=self.vlc_mode) as pbar:
             while True:
                 in_bytes = process.stdout.read(frames_per_window * windows_per_buffer)
                 if not in_bytes:
@@ -71,7 +71,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 newstuff = len(in_bytes) / float(bytes_per_frame) / self.frame_rate
                 simple_progress += newstuff
                 pbar.update(newstuff)
-                if self.progress_only:
+                if self.vlc_mode:
                     print("%d" % int(simple_progress * 100. / total_duration))
                     sys.stdout.flush()
                 in_bytes = np.frombuffer(in_bytes, np.uint8)

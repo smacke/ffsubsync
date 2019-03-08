@@ -55,9 +55,9 @@ def main():
     parser.add_argument('reference')
     parser.add_argument('-i', '--srtin', required=True)  # TODO: allow read from stdin
     parser.add_argument('-o', '--srtout', default=None)
-    parser.add_argument('--progress-only', action='store_true')
+    parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if args.progress_only:
+    if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
     subtitle_bstring = SubtitleSpeechTransformer(
         sample_rate=SAMPLE_RATE).fit_transform(args.srtin)
@@ -68,7 +68,7 @@ def main():
         (reference_bstring,) = VideoSpeechTransformer(
             sample_rate=SAMPLE_RATE,
             frame_rate=FRAME_RATE,
-            progress_only=args.progress_only).fit_transform(args.reference)
+            vlc_mode=args.vlc_mode).fit_transform(args.reference)
     logger.info('computing alignments...')
     offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
     logger.info('offset seconds: %.3f', offset_seconds)
