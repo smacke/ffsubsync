@@ -19,7 +19,18 @@ History
 * Add Chinese to the list of encodings that can be inferred;
 * Make srt parsing more robust;
 
-0.2.0 (2019-03-056
+0.2.0 (2019-03-06)
 ------------------
 * Get rid of auditok (GPLv3, was hurting alignment algorithm);
 * Change to alignment algo: don't penalize matching video non-speech with subtitle speech;
+
+0.2.1 (2019-03-07)
+------------------
+* Developer note: change progress-only to vlc-mode and remove from help docs;
+
+0.2.2 (2019-03-08)
+------------------
+* Allow reading input srt from stdin;
+* Allow specifying encodings for reference, input, and output srt;
+* Use the same encoding for both input srt and output srt by default;
+* Developer note: using sklearn-style data pipelines now;

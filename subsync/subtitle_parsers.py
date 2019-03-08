@@ -5,6 +5,8 @@ from datetime import timedelta
 from sklearn.base import TransformerMixin
 import srt
 
+from .file_utils import open_file
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -29,21 +31,35 @@ class _SrtMixin(object):
     def __init__(self, subs=None):
         self.subs_ = subs
 
+    def set_encoding(self, encoding):
+        self.subs_.set_encoding(encoding)
+        return self
+
 
 class SrtSubtitles(list):
-    def __init__(self, *args, encoding=None, **kwargs):
+    def __init__(self, *args, **kwargs):
+        encoding = kwargs.pop('encoding', None)
         if encoding is None:
             raise ValueError('encoding must be specified')
         super(self.__class__, self).__init__(*args, **kwargs)
         self._encoding = encoding
 
+    def set_encoding(self, encoding):
+        if encoding != 'same':
+            self._encoding = encoding
+        return self
+
+    @property
+    def encoding(self):
+        return self._encoding
+
     def write_file(self, fname):
         if sys.version_info[0] > 2:
-            with open(fname or sys.stdout.fileno(), 'w', encoding=self._encoding) as f:
+            with open(fname or sys.stdout.fileno(), 'w', encoding=self.encoding) as f:
                 return f.write(srt.compose(self))
         else:
             with (fname and open(fname, 'w')) or sys.stdout as f:
-                return f.write(srt.compose(self).encode(self._encoding))
+                return f.write(srt.compose(self).encode(self.encoding))
 
 
 class SrtParser(_SrtMixin, TransformerMixin):
@@ -55,12 +71,8 @@ class SrtParser(_SrtMixin, TransformerMixin):
         encodings_to_try = (self.encoding_to_use,)
         if self.encoding_to_use == 'infer':
             encodings_to_try = ('utf-8', 'utf-8-sig', 'chinese', 'latin-1')
-        if sys.version_info[0] > 2:
-            with open(fname or sys.stdin.fileno(), 'r') as f:
-                subs = f.buffer.read()
-        else:
-            with (fname and open(fname, 'r')) or sys.stdin as f:
-                subs = f.read()
+        with open_file(fname, 'rb') as f:
+            subs = f.read()
         exc = None
         for encoding in encodings_to_try:
             try:
@@ -93,7 +105,7 @@ class SrtOffseter(_SrtMixin, TransformerMixin):
                                             start=sub.start + self.td_seconds,
                                             end=sub.end + self.td_seconds,
                                             content=sub.content))
-        self.subs_ = SrtSubtitles(offset_subs, encoding=subs._encoding)
+        self.subs_ = SrtSubtitles(offset_subs, encoding=subs.encoding)
         return self
 
     def transform(self, *_):
