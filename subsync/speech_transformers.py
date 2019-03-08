@@ -8,8 +8,6 @@ from sklearn.base import TransformerMixin
 import tqdm
 import webrtcvad
 
-from .utils import read_srt_from_file
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -47,8 +45,9 @@ class VideoSpeechTransformer(TransformerMixin):
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
         self.vlc_mode = vlc_mode
+        self.video_speech_results_ = None
 
-    def transform(self, fname, *_):
+    def fit(self, fname, *_):
         total_duration = float(ffmpeg.probe(fname)['format']['duration'])
         speech_detectors = [_make_webrtcvad_detector(self.sample_rate, self.frame_rate)]
         media_bstrings = [[] for _ in speech_detectors]
@@ -78,27 +77,32 @@ class VideoSpeechTransformer(TransformerMixin):
                 for media_bstring, detector in zip(media_bstrings, speech_detectors):
                     media_bstring.append(detector(in_bytes))
         logger.info('...done.')
-        return [np.concatenate(media_bstring) for media_bstring in media_bstrings]
-
-    def fit(self, *_):
+        self.video_speech_results_ = [np.concatenate(media_bstring) for media_bstring in media_bstrings]
         return self
+
+    def transform(self, *_):
+        return self.video_speech_results_
 
 
 class SubtitleSpeechTransformer(TransformerMixin):
     def __init__(self, sample_rate):
         self.sample_rate = sample_rate
+        self.subtitle_speech_results_ = None
+        self.max_time_ = None
 
-    def transform(self, fname, *_):
-        logger.info('extracting speech segments from subtitles %s...', fname)
+    def fit(self, subs, *_):
+        logger.info('extracting speech segments from subtitles...')
         max_time = 0
-        for sub in read_srt_from_file(fname):
+        for sub in subs:
             max_time = max(max_time, sub.end.total_seconds())
+        self.max_time_ = max_time
         samples = np.zeros(int(max_time * self.sample_rate) + 2, dtype=bool)
-        for sub in read_srt_from_file(fname):
+        for sub in subs:
             start, end = [int(round(self.sample_rate * t.total_seconds()))
                           for t in (sub.start, sub.end)]
             samples[start:end + 1] = True
-        return samples
-
-    def fit(self, *_):
+        self.subtitle_speech_results_ = samples
         return self
+
+    def transform(self, *_):
+        return self.subtitle_speech_results_

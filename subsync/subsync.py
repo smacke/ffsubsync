@@ -8,9 +8,11 @@ import logging
 import sys
 
 import numpy as np
+from sklearn.pipeline import Pipeline
 
+from .aligners import FFTAligner, MaxScoreAligner
 from .speech_transformers import SubtitleSpeechTransformer, VideoSpeechTransformer
-from .utils import read_srt_from_file, write_srt_to_file, srt_offset
+from .subtitle_parsers import SrtParser, SrtOffseter
 from .version import __version__
 
 logging.basicConfig(level=logging.INFO)
@@ -20,36 +22,15 @@ FRAME_RATE = 48000
 SAMPLE_RATE = 100
 
 
-def get_best_offset(substring, vidstring, get_score=False):
-    substring, vidstring = [
-        list(map(int, s))
-        if isinstance(s, str) else s
-        for s in [substring, vidstring]
-    ]
-    substring, vidstring = map(
-        lambda s: 2 * np.array(s).astype(float) - 1, [substring, vidstring])
-    total_bits = math.log(len(substring) + len(vidstring), 2)
-    total_length = int(2 ** math.ceil(total_bits))
-    extra_zeros = total_length - len(substring) - len(vidstring)
-    subft = np.fft.fft(np.append(np.zeros(extra_zeros + len(vidstring)), substring))
-    vidft = np.fft.fft(np.flip(np.append(vidstring, np.zeros(len(substring) + extra_zeros)), 0))
-    convolve = np.real(np.fft.ifft(subft * vidft))
-    best_idx = np.argmax(convolve)
-    if get_score:
-        return convolve[best_idx], len(convolve) - 1 - best_idx - len(substring)
-    else:
-        return len(convolve) - 1 - best_idx - len(substring)
-
-
-def write_offset_file(fread, fwrite, nseconds):
-    subs = read_srt_from_file(fread)
-    subs = srt_offset(subs, nseconds)
-    write_srt_to_file(fwrite, subs)
+def make_srt_speech_pipeline(encoding='infer'):
+    return Pipeline([
+        ('parse', SrtParser(encoding=encoding)),
+        ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE))
+    ])
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Synchronize subtitles with video.')
+    parser = argparse.ArgumentParser(description='Synchronize subtitles with video.')
     parser.add_argument('-v', '--version', action='version',
                         version='%(prog)s {version}'.format(version=__version__))
     parser.add_argument('reference')
@@ -59,20 +40,23 @@ def main():
     args = parser.parse_args()
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
-    subtitle_bstring = SubtitleSpeechTransformer(
-        sample_rate=SAMPLE_RATE).fit_transform(args.srtin)
     if args.reference.endswith('srt'):
-        reference_bstring = SubtitleSpeechTransformer(
-            sample_rate=SAMPLE_RATE).fit_transform(args.reference)
+        reference_pipe = make_srt_speech_pipeline()
     else:
-        (reference_bstring,) = VideoSpeechTransformer(
-            sample_rate=SAMPLE_RATE,
-            frame_rate=FRAME_RATE,
-            vlc_mode=args.vlc_mode).fit_transform(args.reference)
+        reference_pipe = Pipeline([
+            ('speech_extract', VideoSpeechTransformer(sample_rate=SAMPLE_RATE,
+                                                      frame_rate=FRAME_RATE,
+                                                      vlc_mode=args.vlc_mode))
+        ])
+    srtin_pipe = make_srt_speech_pipeline()
     logger.info('computing alignments...')
-    offset_seconds = get_best_offset(subtitle_bstring, reference_bstring) / 100.
+    offset_seconds = MaxScoreAligner(FFTAligner).fit_transform(
+        srtin_pipe.fit_transform(args.srtin),
+        reference_pipe.fit_transform(args.reference)
+    ) / 100.
     logger.info('offset seconds: %.3f', offset_seconds)
-    write_offset_file(args.srtin, args.srtout, offset_seconds)
+    SrtOffseter(offset_seconds).fit_transform(
+        srtin_pipe.named_steps['parse'].subs_).write_file(args.srtout)
     return 0
 
 
