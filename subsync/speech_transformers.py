@@ -99,9 +99,10 @@ class SubtitleSpeechTransformer(TransformerMixin):
         self.max_time_ = max_time
         samples = np.zeros(int(max_time * self.sample_rate) + 2, dtype=bool)
         for sub in subs:
-            start, end = [int(round(self.sample_rate * t.total_seconds()))
-                          for t in (sub.start, sub.end)]
-            samples[start:end + 1] = True
+            start = int(round(sub.start.total_seconds() * self.sample_rate))
+            duration = sub.end.total_seconds() - sub.start.total_seconds()
+            end = start + int(round(duration * self.sample_rate))
+            samples[start:end] = True
         self.subtitle_speech_results_ = samples
         return self
 

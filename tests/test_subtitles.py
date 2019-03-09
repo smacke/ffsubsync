@@ -1,8 +1,10 @@
 from io import BytesIO
 
 import pytest
+import numpy as np
 from sklearn.pipeline import make_pipeline
 
+from subsync.speech_transformers import SubtitleSpeechTransformer
 from subsync.subtitle_parsers import SrtParser, SrtOffseter
 
 fake_srt = b"""1
@@ -40,3 +42,24 @@ def test_offset(offset):
                    sub_orig.start.total_seconds() - offset) < 1e-6
         assert abs(sub_offset.end.total_seconds() -
                    sub_orig.end.total_seconds() - offset) < 1e-6
+
+
+@pytest.mark.parametrize('sample_rate', [10, 20, 100, 300])
+def test_speech_extraction(sample_rate):
+    parser = SrtParser()
+    extractor = SubtitleSpeechTransformer(sample_rate=sample_rate)
+    pipe = make_pipeline(parser, extractor)
+    bitstring = pipe.fit_transform(BytesIO(fake_srt))
+    bitstring_shifted_left = np.append(bitstring[1:], [False])
+    bitstring_shifted_right = np.append([False], bitstring[:-1])
+    bitstring_cumsum = np.cumsum(bitstring)
+    consec_ones_end_pos = np.nonzero(bitstring_cumsum *
+                                     (bitstring ^ bitstring_shifted_left) *
+                                     (bitstring_cumsum != np.cumsum(bitstring_shifted_right)))[0]
+    prev = 0
+    for pos, sub in zip(consec_ones_end_pos, parser.subs_):
+        start = int(round(sub.start.total_seconds() * sample_rate))
+        duration = sub.end.total_seconds() - sub.start.total_seconds()
+        stop = start + int(round(duration * sample_rate))
+        assert bitstring_cumsum[pos] - prev == stop - start
+        prev = bitstring_cumsum[pos]
