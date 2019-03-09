@@ -36,7 +36,7 @@ def test_same_encoding(encoding):
 @pytest.mark.parametrize('offset', [1, 1.5, -2.3])
 def test_offset(offset):
     parser = SrtParser()
-    offseter  = SrtOffseter(offset)
+    offseter = SrtOffseter(offset)
     pipe = make_pipeline(parser, offseter)
     pipe.fit(BytesIO(fake_srt))
     for sub_orig, sub_offset in zip(parser.subs_, offseter.subs_):
@@ -65,3 +65,11 @@ def test_speech_extraction(sample_rate):
         stop = start + int(round(duration * sample_rate))
         assert bitstring_cumsum[pos] - prev == stop - start
         prev = bitstring_cumsum[pos]
+
+
+def test_max_time():
+    parser = SrtParser()
+    extractor = SubtitleSpeechTransformer(sample_rate=100)
+    pipe = make_pipeline(parser, extractor)
+    pipe.fit(BytesIO(fake_srt))
+    assert extractor.max_time_ == 6.062
