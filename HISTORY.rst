@@ -34,3 +34,7 @@ History
 * Allow specifying encodings for reference, input, and output srt;
 * Use the same encoding for both input srt and output srt by default;
 * Developer note: using sklearn-style data pipelines now;
+
+0.2.3 (2019-03-08)
+------------------
+* Minor change to subtitle speech extraction;

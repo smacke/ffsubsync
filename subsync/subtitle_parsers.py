@@ -17,8 +17,9 @@ def _srt_parse(s, tolerant=True):
     while True:
         try:
             subs_list.append(next(subs))
-        except ValueError:
+        except ValueError as e:
             if tolerant:
+                logger.warning(e)
                 continue
             else:
                 raise
