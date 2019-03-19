@@ -3,6 +3,7 @@ ffmpeg-python
 future
 numpy>=1.12.0
 sklearn
+six
 srt
 tqdm
 webrtcvad
