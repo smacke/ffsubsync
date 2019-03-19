@@ -1,6 +1,6 @@
 import logging
+import subprocess
 import sys
-import threading
 
 import ffmpeg
 import numpy as np
@@ -50,14 +50,20 @@ class VideoSpeechTransformer(TransformerMixin):
     def fit(self, fname, *_):
         total_duration = float(ffmpeg.probe(fname)['format']['duration'])
         speech_detectors = [_make_webrtcvad_detector(self.sample_rate, self.frame_rate)]
-        media_bstrings = [[] for _ in speech_detectors]
+        media_bstrings = [[] for _sd in speech_detectors]
         logger.info('extracting speech segments from video %s...', fname)
-        process = (
-            ffmpeg.input(fname)
-            .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=self.frame_rate)
-            .run_async(pipe_stdout=True, pipe_stderr=True)
-        )
-        threading.Thread(target=lambda: process.stderr.read()).start()
+        ffmpeg_args = [
+            'ffmpeg',
+            '-loglevel', 'fatal',
+            '-nostdin',
+            '-i', fname,
+            '-f', 's16le',
+            '-ac', '1',
+            '-acodec', 'pcm_s16le',
+            '-ar', str(self.frame_rate),
+            '-'
+        ]
+        process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=None)
         bytes_per_frame = 2
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate
         windows_per_buffer = 10000

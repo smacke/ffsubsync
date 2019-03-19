@@ -38,3 +38,8 @@ History
 0.2.3 (2019-03-08)
 ------------------
 * Minor change to subtitle speech extraction;
+
+0.2.4 (2019-03-19)
+------------------
+* Add six to requirements.txt;
+* Set default encoding to utf8 to ensure non ascii filenames handled properly;
