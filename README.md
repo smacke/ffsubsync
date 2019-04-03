@@ -1,4 +1,5 @@
-# subsync
+subsync
+=======
 
 [![Build Status](https://travis-ci.org/smacke/subsync.svg?branch=master)](https://travis-ci.org/smacke/subsync)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -14,7 +15,8 @@ Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
 ![](tearing-me-apart-wrong.gif)  |  ![](tearing-me-apart-correct.gif)
 
-# Install
+Install
+-------
 First, make sure ffmpeg is installed. On MacOS, this looks like:
 ~~~
 brew install ffmpeg
@@ -24,7 +26,8 @@ Next, grab the script. It should work with both Python 2 and Python 3:
 pip install git+https://github.com/smacke/subsync
 ~~~
 
-# Usage
+Usage
+-----
 ~~~
 subsync video.mp4 -i unsynchronized.srt > synchronized.srt
 ~~~
@@ -43,7 +46,8 @@ subsync reference.srt -i unsynchronized.srt -o synchronized.srt
 
 Whether to perform voice activity detection on the audio or to directly extract speech from an srt file is determined from the file extension.
 
-# VLC Integration
+VLC Integration
+---------------
 To demonstrate how one might use `subsync` seamlessly with real video software,
 we developed a prototype integration into the popular [VLC](https://www.videolan.org/vlc/index.html)
 media player, which was demoed during the HackIllinois 2019 project expo. The resulting patch
@@ -68,14 +72,16 @@ for building VLC from source. *Warning: this is not easy.*
 You should now be able to autosynchronize subtitles using the hotkey `Ctrl+Shift+S`
 (only enabled while subtitles are present).
 
-# Speed
+Speed
+-----
 My experience is that `subsync` usually finishes running in 20 to 30 seconds,
 depending on the length of the video. The most expensive step is actually
 extraction of raw audio. If you already have a correctly synchronized "reference" srt
 file (in which case the video is no longer necessary),
 `subsync` typically runs in less than a second.
 
-# How It Works
+How It Works
+------------
 The synchronization algorithm operates in 3 steps:
 1. Discretize video and subtitles by time into 10ms windows.
 2. For each 10ms window, determine whether that window contains speech.
@@ -93,14 +99,16 @@ O(n^2) strategy for scoring all alignments is unacceptable. Instead, we use the
 fact that "scoring all alignments" is a convolution operation and can be implemented
 with the Fast Fourier Transform (FFT), bringing the complexity down to O(n log n).
 
-# Does It Work?
+Does It Work?
+-------------
 I have yet to find a case where the automatic synchronization has been off by
 more than ~1 second. If the reference is another subtitle file, I think it should
 work every time. I would expect that it could fail sometimes when the reference is
 a video since speech extraction is a noisier process, but I have not found any
 bad cases yet (currently tested on ~10 videos more than 30 minutes in length).
 
-# Future Work
+Future Work
+-----------
 The prototype VLC patch is very experimental -- it was developed under pressure
 and just barely works. I would love to see this project more robustly
 integrated with VLC, either directly in the VLC core, or as a plugin.
@@ -110,7 +118,8 @@ Also: although I have not found cases where the synchronization algorithm fails,
 not mean they don't exist. It would be good to find these cases so as to better understand
 the algorithm's pain points.
 
-# Credits
+Credits
+-------
 This project would not be possible without the following libraries:
 - [ffmpeg](https://www.ffmpeg.org/) and the [ffmpeg-python](https://github.com/kkroening/ffmpeg-python) wrapper, for extracting raw audio from video
 - VAD from [webrtc](https://webrtc.org/) and the [py-webrtcvad](https://github.com/wiseman/py-webrtcvad) wrapper, for speech detection
