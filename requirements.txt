@@ -2,7 +2,7 @@ argparse
 ffmpeg-python
 future
 numpy>=1.12.0
-sklearn
+scikit-learn
 six
 srt
 tqdm
