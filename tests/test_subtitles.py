@@ -1,4 +1,5 @@
 from io import BytesIO
+from datetime import timedelta
 
 import pytest
 import numpy as np
@@ -19,6 +20,13 @@ Oh hi, Mark.
 00:00:04,653 --> 00:00:06,062
 You are tearing me apart, Lisa!
 """
+
+
+@pytest.mark.parametrize('max_seconds', [1, 1.5, 2.0, 2.5])
+def test_max_seconds(max_seconds):
+    parser = SrtParser(max_subtitle_seconds=max_seconds)
+    parser.fit(BytesIO(fake_srt))
+    assert max(sub.end - sub.start for sub in parser.subs_) <= timedelta(seconds=max_seconds)
 
 
 @pytest.mark.parametrize('encoding', ['utf-8', 'ascii', 'latin-1'])

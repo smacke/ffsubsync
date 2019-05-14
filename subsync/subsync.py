@@ -17,9 +17,9 @@ FRAME_RATE = 48000
 SAMPLE_RATE = 100
 
 
-def make_srt_speech_pipeline(encoding):
+def make_srt_speech_pipeline(encoding, max_subtitle_seconds):
     return Pipeline([
-        ('parse', SrtParser(encoding=encoding)),
+        ('parse', SrtParser(encoding=encoding, max_subtitle_seconds=max_subtitle_seconds)),
         ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE))
     ])
 
@@ -34,6 +34,8 @@ def main():
     parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
     parser.add_argument('--encoding', default='infer',
                         help='What encoding to use for reading input subtitles.')
+    parser.add_argument('--max-subtitle-seconds', type=float, default=10,
+                        help='Maximum duration for a subtitle to appear on-screen.')
     parser.add_argument('--output-encoding', default='same',
                         help='What encoding to use for writing output subtitles '
                              '(default=same as for input).')
@@ -54,7 +56,7 @@ def main():
                                                       frame_rate=FRAME_RATE,
                                                       vlc_mode=args.vlc_mode))
         ])
-    srtin_pipe = make_srt_speech_pipeline(args.encoding)
+    srtin_pipe = make_srt_speech_pipeline(args.encoding, args.max_subtitle_seconds)
     logger.info('computing alignments...')
     offset_seconds = MaxScoreAligner(FFTAligner).fit_transform(
         srtin_pipe.fit_transform(args.srtin),

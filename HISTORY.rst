@@ -43,3 +43,7 @@ History
 ------------------
 * Add six to requirements.txt;
 * Set default encoding to utf8 to ensure non ascii filenames handled properly;
+
+0.2.5 (2019-05-14)
+------------------
+* Clamp subtitles to maximum duration (default 10);

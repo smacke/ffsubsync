@@ -11,12 +11,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def _srt_parse(s, tolerant=True):
+def _srt_parse(s, max_subtitle_seconds=None, tolerant=True):
     subs = srt.parse(s)
     subs_list = []
+    max_duration = timedelta(days=1)
+    if max_subtitle_seconds is not None:
+        max_duration = timedelta(seconds=max_subtitle_seconds)
     while True:
         try:
-            subs_list.append(next(subs))
+            next_sub = next(subs)
+            next_sub.end = min(next_sub.end, next_sub.start + max_duration)
+            subs_list.append(next_sub)
         except ValueError as e:
             if tolerant:
                 logger.warning(e)
@@ -64,9 +69,11 @@ class SrtSubtitles(list):
 
 
 class SrtParser(_SrtMixin, TransformerMixin):
-    def __init__(self, encoding='infer'):
+    def __init__(self, encoding='infer', max_subtitle_seconds=None):
         super(self.__class__, self).__init__()
         self.encoding_to_use = encoding
+        self.sub_skippers = []
+        self.max_subtitle_seconds = max_subtitle_seconds
 
     def fit(self, fname, *_):
         encodings_to_try = (self.encoding_to_use,)
@@ -78,7 +85,8 @@ class SrtParser(_SrtMixin, TransformerMixin):
         for encoding in encodings_to_try:
             try:
                 self.subs_ = SrtSubtitles(
-                    _srt_parse(subs.decode(encoding).strip()),
+                    _srt_parse(subs.decode(encoding).strip(),
+                               max_subtitle_seconds=self.max_subtitle_seconds),
                     encoding=encoding
                 )
                 return self
