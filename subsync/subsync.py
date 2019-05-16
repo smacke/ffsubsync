@@ -47,7 +47,8 @@ def main():
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
     if args.reference.endswith('srt'):
-        reference_pipe = make_srt_speech_pipeline(args.reference_encoding or 'infer')
+        reference_pipe = make_srt_speech_pipeline(args.reference_encoding or 'infer',
+                                                  args.max_subtitle_seconds)
     else:
         if args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
