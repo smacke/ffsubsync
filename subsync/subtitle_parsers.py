@@ -22,6 +22,9 @@ def _srt_parse(s, max_subtitle_seconds=None, tolerant=True):
             next_sub = next(subs)
             next_sub.end = min(next_sub.end, next_sub.start + max_duration)
             subs_list.append(next_sub)
+        # We don't catch SRTParseError here b/c that typically raised when we
+        # are trying to parse with the wrong encoding, in which case we might
+        # be able to try another one on the *entire* set of subtitles elsewhere.
         except ValueError as e:
             if tolerant:
                 logger.warning(e)
