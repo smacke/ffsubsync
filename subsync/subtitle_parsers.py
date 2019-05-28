@@ -81,7 +81,7 @@ class SrtParser(_SrtMixin, TransformerMixin):
     def fit(self, fname, *_):
         encodings_to_try = (self.encoding_to_use,)
         if self.encoding_to_use == 'infer':
-            encodings_to_try = ('utf-8', 'utf-8-sig', 'chinese', 'latin-1')
+            encodings_to_try = ('utf-8', 'utf-8-sig', 'chinese', 'latin-1', 'utf-16')
         with open_file(fname, 'rb') as f:
             subs = f.read()
         exc = None

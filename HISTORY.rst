@@ -47,3 +47,11 @@ History
 0.2.5 (2019-05-14)
 ------------------
 * Clamp subtitles to maximum duration (default 10);
+
+0.2.6 (2019-05-15)
+------------------
+* Fix argument parsing regression;
+
+0.2.7 (2019-05-28)
+------------------
+* Add utf-16 to list of encodings to try for inference purposes;
