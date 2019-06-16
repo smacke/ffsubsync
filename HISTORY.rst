@@ -55,3 +55,7 @@ History
 0.2.7 (2019-05-28)
 ------------------
 * Add utf-16 to list of encodings to try for inference purposes;
+
+0.2.8 (2019-06-15)
+------------------
+* Allow user to specify start time (in seconds) for processing;

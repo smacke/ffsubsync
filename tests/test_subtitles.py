@@ -1,3 +1,4 @@
+import itertools
 from io import BytesIO
 from datetime import timedelta
 
@@ -20,6 +21,16 @@ Oh hi, Mark.
 00:00:04,653 --> 00:00:06,062
 You are tearing me apart, Lisa!
 """
+
+
+@pytest.mark.parametrize('start_seconds', [0, 2, 4, 6])
+def test_start_seconds(start_seconds):
+    parser_zero = SrtParser(start_seconds=0)
+    parser_zero.fit(BytesIO(fake_srt))
+    parser = SrtParser(start_seconds=start_seconds)
+    parser.fit(BytesIO(fake_srt))
+    expected = [sub for sub in parser_zero.subs_ if sub.start >= timedelta(seconds=start_seconds)]
+    assert expected == parser.subs_
 
 
 @pytest.mark.parametrize('max_seconds', [1, 1.5, 2.0, 2.5])
@@ -54,10 +65,11 @@ def test_offset(offset):
                    sub_orig.end.total_seconds() - offset) < 1e-6
 
 
-@pytest.mark.parametrize('sample_rate', [10, 20, 100, 300])
-def test_speech_extraction(sample_rate):
-    parser = SrtParser()
-    extractor = SubtitleSpeechTransformer(sample_rate=sample_rate)
+@pytest.mark.parametrize('sample_rate,start_seconds',
+                         itertools.product([10, 20, 100, 300], [0, 2, 4, 6]))
+def test_speech_extraction(sample_rate, start_seconds):
+    parser = SrtParser(start_seconds=start_seconds)
+    extractor = SubtitleSpeechTransformer(sample_rate=sample_rate, start_seconds=start_seconds)
     pipe = make_pipeline(parser, extractor)
     bitstring = pipe.fit_transform(BytesIO(fake_srt))
     bitstring_shifted_left = np.append(bitstring[1:], [False])
@@ -75,7 +87,7 @@ def test_speech_extraction(sample_rate):
         prev = bitstring_cumsum[pos]
 
 
-def test_max_time():
+def test_max_time_found():
     parser = SrtParser()
     extractor = SubtitleSpeechTransformer(sample_rate=100)
     pipe = make_pipeline(parser, extractor)

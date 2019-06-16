@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import sys
+from datetime import timedelta
 
 import ffmpeg
 import numpy as np
@@ -41,19 +42,24 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
 
 
 class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, sample_rate, frame_rate, vlc_mode=False):
+    def __init__(self, sample_rate, frame_rate, start_seconds=0, vlc_mode=False):
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
+        self.start_seconds = start_seconds
         self.vlc_mode = vlc_mode
         self.video_speech_results_ = None
 
     def fit(self, fname, *_):
-        total_duration = float(ffmpeg.probe(fname)['format']['duration'])
+        total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
         speech_detectors = [_make_webrtcvad_detector(self.sample_rate, self.frame_rate)]
         media_bstrings = [[] for _sd in speech_detectors]
         logger.info('extracting speech segments from video %s...', fname)
-        ffmpeg_args = [
-            'ffmpeg',
+        ffmpeg_args = ['ffmpeg']
+        if self.start_seconds > 0:
+            ffmpeg_args.extend([
+                '-ss', str(timedelta(seconds=self.start_seconds)),
+            ])
+        ffmpeg_args.extend([
             '-loglevel', 'fatal',
             '-nostdin',
             '-i', fname,
@@ -62,7 +68,7 @@ class VideoSpeechTransformer(TransformerMixin):
             '-acodec', 'pcm_s16le',
             '-ar', str(self.frame_rate),
             '-'
-        ]
+        ])
         process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=None)
         bytes_per_frame = 2
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate
@@ -92,8 +98,9 @@ class VideoSpeechTransformer(TransformerMixin):
 
 
 class SubtitleSpeechTransformer(TransformerMixin):
-    def __init__(self, sample_rate):
+    def __init__(self, sample_rate, start_seconds=0):
         self.sample_rate = sample_rate
+        self.start_seconds = start_seconds
         self.subtitle_speech_results_ = None
         self.max_time_ = None
 
@@ -102,10 +109,10 @@ class SubtitleSpeechTransformer(TransformerMixin):
         max_time = 0
         for sub in subs:
             max_time = max(max_time, sub.end.total_seconds())
-        self.max_time_ = max_time
+        self.max_time_ = max_time - self.start_seconds
         samples = np.zeros(int(max_time * self.sample_rate) + 2, dtype=bool)
         for sub in subs:
-            start = int(round(sub.start.total_seconds() * self.sample_rate))
+            start = int(round((sub.start.total_seconds() - self.start_seconds) * self.sample_rate))
             duration = sub.end.total_seconds() - sub.start.total_seconds()
             end = start + int(round(duration * self.sample_rate))
             samples[start:end] = True

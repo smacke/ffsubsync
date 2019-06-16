@@ -17,10 +17,13 @@ FRAME_RATE = 48000
 SAMPLE_RATE = 100
 
 
-def make_srt_speech_pipeline(encoding, max_subtitle_seconds):
+def make_srt_speech_pipeline(encoding, max_subtitle_seconds, start_seconds):
     return Pipeline([
-        ('parse', SrtParser(encoding=encoding, max_subtitle_seconds=max_subtitle_seconds)),
-        ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE))
+        ('parse', SrtParser(encoding=encoding,
+                            max_subtitle_seconds=max_subtitle_seconds,
+                            start_seconds=start_seconds)),
+        ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE,
+                                                     start_seconds=start_seconds))
     ])
 
 
@@ -36,6 +39,8 @@ def main():
                         help='What encoding to use for reading input subtitles.')
     parser.add_argument('--max-subtitle-seconds', type=float, default=10,
                         help='Maximum duration for a subtitle to appear on-screen.')
+    parser.add_argument('--start-seconds', type=int, default=0,
+                        help='Start time for processing.')
     parser.add_argument('--output-encoding', default='same',
                         help='What encoding to use for writing output subtitles '
                              '(default=same as for input).')
@@ -48,16 +53,20 @@ def main():
         logger.setLevel(logging.CRITICAL)
     if args.reference.endswith('srt'):
         reference_pipe = make_srt_speech_pipeline(args.reference_encoding or 'infer',
-                                                  args.max_subtitle_seconds)
+                                                  args.max_subtitle_seconds,
+                                                  args.start_seconds)
     else:
         if args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
         reference_pipe = Pipeline([
             ('speech_extract', VideoSpeechTransformer(sample_rate=SAMPLE_RATE,
                                                       frame_rate=FRAME_RATE,
+                                                      start_seconds=args.start_seconds,
                                                       vlc_mode=args.vlc_mode))
         ])
-    srtin_pipe = make_srt_speech_pipeline(args.encoding, args.max_subtitle_seconds)
+    srtin_pipe = make_srt_speech_pipeline(args.encoding,
+                                          args.max_subtitle_seconds,
+                                          args.start_seconds)
     logger.info('computing alignments...')
     offset_seconds = MaxScoreAligner(FFTAligner).fit_transform(
         srtin_pipe.fit_transform(args.srtin),
