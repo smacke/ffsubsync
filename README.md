@@ -99,24 +99,26 @@ O(n^2) strategy for scoring all alignments is unacceptable. Instead, we use the
 fact that "scoring all alignments" is a convolution operation and can be implemented
 with the Fast Fourier Transform (FFT), bringing the complexity down to O(n log n).
 
-Does It Work?
--------------
-I have yet to find a case where the automatic synchronization has been off by
-more than ~1 second. If the reference is another subtitle file, I think it should
-work every time. I would expect that it could fail sometimes when the reference is
-a video since speech extraction is a noisier process, but I have not found any
-bad cases yet (currently tested on ~10 videos more than 30 minutes in length).
+Limitations
+-----------
+In most cases, inconsistencies between video and subtitles occur when starting
+or ending segments present in video are not present in subtitles, or vice versa.
+This can occur, for example, when a TV episode recap in the subtitles was pruned
+from video. Subsync typically works well in these cases, and in my experience
+this covers >95% of use cases. Handling breaks and splits outside of the beginning
+and ending segments is left to future work (see below).
 
 Future Work
 -----------
-The prototype VLC patch is very experimental -- it was developed under pressure
+1. I am currently working to extend the synchronization algorithm to handle splits / breaks
+in the middle of video not present in subtitles (or vice versa). It will take some time
+before I have a robust solution (assuming one is possible). See
+[#10](https://github.com/smacke/subsync/issues/10) for more details.
+
+2. The prototype VLC patch is very experimental -- it was developed under pressure
 and just barely works. I would love to see this project more robustly
 integrated with VLC, either directly in the VLC core, or as a plugin.
 If you or anyone you know has ideas for how to accomplish this, please let me know!
-
-Also: although I have not found cases where the synchronization algorithm fails, this does
-not mean they don't exist. It would be good to find these cases so as to better understand
-the algorithm's pain points.
 
 Credits
 -------
