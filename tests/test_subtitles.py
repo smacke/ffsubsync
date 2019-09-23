@@ -10,17 +10,24 @@ from subsync.speech_transformers import SubtitleSpeechTransformer
 from subsync.subtitle_parsers import SrtParser, SrtOffseter
 
 fake_srt = b"""1
-00:00:00,178 --> 00:00:02,416
+00:00:00,178 --> 00:00:02,416294
 <i>Previously on "Your favorite TV show..."</i>
 
 2
-00:00:02,828 --> 00:00:04,549
+00:00:02,8283 --> 00:00:04,549
 Oh hi, Mark.
 
 3
-00:00:04,653 --> 00:00:06,062
+00:00:04,6530 --> 00:00:06,0623
 You are tearing me apart, Lisa!
 """
+
+# Occasionally some srt files have timestamps whose 'milliseconds'
+# field has more than 3 digits... Ideally we should test that these
+# are handled properly with dedicated tests, but in the interest of
+# development speed I've opted to sprinkle in a few >3 digit
+# millisecond fields into the dummy string above in order to exercise
+# this case integration-test style in the below unit tests.
 
 
 @pytest.mark.parametrize('start_seconds', [0, 2, 4, 6])
