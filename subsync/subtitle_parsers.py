@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import logging
 import re
 import sys
@@ -11,7 +12,7 @@ from .file_utils import open_file
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TS_REGEX = r"[,.:，．。：]".join([r"(\d+", r"\d{2}", r"\d{2}", r")(\d{3})\d+"])
+TS_REGEX = u"[,.:，．。：]".join([r"(\d+", r"\d{2}", r"\d{2}", r")(\d{3})\d+"])
 
 
 def _srt_parse(s, max_subtitle_seconds=None, start_seconds=0, tolerant=True):

@@ -59,3 +59,11 @@ History
 0.2.8 (2019-06-15)
 ------------------
 * Allow user to specify start time (in seconds) for processing;
+
+0.2.9 (2019-09-22)
+------------------
+* Quck and dirty fix to properly handle timestamp ms fields with >3 digits;
+
+0.2.10 (2019-09-22)
+------------------
+* Specify utf-8 encoding at top of file for backcompat with Python2;

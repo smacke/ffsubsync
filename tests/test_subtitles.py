@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*- 
 import itertools
 from io import BytesIO
 from datetime import timedelta

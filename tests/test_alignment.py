@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*- 
 import pytest
 from subsync.aligners import FFTAligner, MaxScoreAligner
 
