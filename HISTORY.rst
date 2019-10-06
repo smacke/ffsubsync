@@ -71,3 +71,7 @@ History
 0.2.11 (2019-10-06)
 ------------------
 * Quick and dirty fix to recover without progress info if `ffmpeg.probe` raises;
+
+0.2.12 (2019-10-06)
+------------------
+* Clear O_NONBLOCK flag on stdout stream in case it is set;

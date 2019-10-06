@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*- 
+import fcntl
 import logging
+import os
 import subprocess
 import sys
 from datetime import timedelta
@@ -74,6 +76,8 @@ class VideoSpeechTransformer(TransformerMixin):
             '-'
         ])
         process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=None)
+        flags = fcntl.fcntl(process.stdout.fileno(), fcntl.F_GETFL)
+        fcntl.fcntl(process.stdout.fileno(), fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
         bytes_per_frame = 2
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate
         windows_per_buffer = 10000
