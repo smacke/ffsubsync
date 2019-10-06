@@ -51,7 +51,10 @@ class VideoSpeechTransformer(TransformerMixin):
         self.video_speech_results_ = None
 
     def fit(self, fname, *_):
-        total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
+        try:
+            total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
+        except:
+            total_duration = None
         speech_detectors = [_make_webrtcvad_detector(self.sample_rate, self.frame_rate)]
         media_bstrings = [[] for _sd in speech_detectors]
         logger.info('extracting speech segments from video %s...', fname)
@@ -83,7 +86,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 newstuff = len(in_bytes) / float(bytes_per_frame) / self.frame_rate
                 simple_progress += newstuff
                 pbar.update(newstuff)
-                if self.vlc_mode:
+                if self.vlc_mode and total_duration is not None:
                     print("%d" % int(simple_progress * 100. / total_duration))
                     sys.stdout.flush()
                 in_bytes = np.frombuffer(in_bytes, np.uint8)

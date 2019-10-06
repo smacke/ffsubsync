@@ -67,3 +67,7 @@ History
 0.2.10 (2019-09-22)
 ------------------
 * Specify utf-8 encoding at top of file for backcompat with Python2;
+
+0.2.11 (2019-10-06)
+------------------
+* Quick and dirty fix to recover without progress info if `ffmpeg.probe` raises;
