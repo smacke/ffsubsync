@@ -75,3 +75,7 @@ History
 0.2.12 (2019-10-06)
 ------------------
 * Clear O_NONBLOCK flag on stdout stream in case it is set;
+
+0.2.13 (2019-10-07)
+------------------
+* Bump min required scikit-learn to 0.21.3.
