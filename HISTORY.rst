@@ -79,3 +79,7 @@ History
 0.2.14 (2019-10-07)
 ------------------
 * Bump min required scikit-learn to 0.20.4.
+
+0.2.15 (2019-10-11)
+------------------
+* Revert changes from 0.2.12 (caused regression on Windows).
