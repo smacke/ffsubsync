@@ -72,10 +72,11 @@ def main():
                                           args.max_subtitle_seconds,
                                           args.start_seconds)
     logger.info('computing alignments...')
-    offset_seconds = MaxScoreAligner(FFTAligner).fit_transform(
-        srtin_pipe.fit_transform(args.srtin),
-        reference_pipe.fit_transform(args.reference)
-    ) / float(SAMPLE_RATE)
+    offset_samples, best_srt_pipe = MaxScoreAligner(FFTAligner).fit_transform(
+        reference_pipe.fit_transform(args.reference),
+        srtin_pipe.fit(args.srtin)
+    )
+    offset_seconds = offset_samples / float(SAMPLE_RATE)
     logger.info('offset seconds: %.3f', offset_seconds)
     offseter = SubtitleOffseter(offset_seconds).fit_transform(
         srtin_pipe.named_steps['parse'].subs_)

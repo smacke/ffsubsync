@@ -15,20 +15,20 @@ class FFTAligner(TransformerMixin):
         self.best_score_ = None
         self.get_score_ = False
 
-    def fit(self, substring, vidstring, get_score=False):
-        substring, vidstring = [
+    def fit(self, refstring, substring, get_score=False):
+        refstring, substring = [
             list(map(int, s))
             if isinstance(s, str) else s
-            for s in [substring, vidstring]
+            for s in [refstring, substring]
         ]
-        substring, vidstring = map(
-            lambda s: 2 * np.array(s).astype(float) - 1, [substring, vidstring])
-        total_bits = math.log(len(substring) + len(vidstring), 2)
+        refstring, substring = map(
+            lambda s: 2 * np.array(s).astype(float) - 1, [refstring, substring])
+        total_bits = math.log(len(substring) + len(refstring), 2)
         total_length = int(2 ** math.ceil(total_bits))
-        extra_zeros = total_length - len(substring) - len(vidstring)
-        subft = np.fft.fft(np.append(np.zeros(extra_zeros + len(vidstring)), substring))
-        vidft = np.fft.fft(np.flip(np.append(vidstring, np.zeros(len(substring) + extra_zeros)), 0))
-        convolve = np.real(np.fft.ifft(subft * vidft))
+        extra_zeros = total_length - len(substring) - len(refstring)
+        subft = np.fft.fft(np.append(np.zeros(extra_zeros + len(refstring)), substring))
+        refft = np.fft.fft(np.flip(np.append(refstring, np.zeros(len(substring) + extra_zeros)), 0))
+        convolve = np.real(np.fft.ifft(subft * refft))
         best_idx = np.argmax(convolve)
         self.best_offset_ = len(convolve) - 1 - best_idx - len(substring)
         self.best_score_ = convolve[best_idx]
@@ -50,18 +50,24 @@ class MaxScoreAligner(TransformerMixin):
             self.base_aligner = base_aligner
         self._scores = []
 
-    def fit(self, substrings, vidstrings):
+    def fit(self, refstring, subpipes):
         logger.info('computing alignments...')
-        if not isinstance(substrings, list):
-            substrings = [substrings]
-        if not isinstance(vidstrings, list):
-            vidstrings = [vidstrings]
-        for substring in substrings:
-            for vidstring in vidstrings:
-                self._scores.append(self.base_aligner.fit_transform(
-                    substring, vidstring, get_score=True))
+        if not isinstance(subpipes, list):
+            subpipes = [subpipes]
+        for subpipe in subpipes:
+            if hasattr(subpipe, 'transform'):
+                substring = subpipe.transform()
+            else:
+                substring = subpipe
+            self._scores.append((
+                self.base_aligner.fit_transform(
+                    refstring, substring, get_score=True
+                ),
+                subpipe
+            ))
         logger.info('...done')
         return self
 
     def transform(self, *_):
-        return max(self._scores)[1]
+        (score, offset), subpipe = max(self._scores)
+        return offset, subpipe
