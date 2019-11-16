@@ -56,8 +56,8 @@ class VideoSpeechTransformer(TransformerMixin):
             total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
         except:
             total_duration = None
-        speech_detectors = [_make_webrtcvad_detector(self.sample_rate, self.frame_rate)]
-        media_bstrings = [[] for _sd in speech_detectors]
+        detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)
+        media_bstring = []
         logger.info('extracting speech segments from video %s...', fname)
         ffmpeg_args = ['ffmpeg']
         if self.start_seconds > 0:
@@ -91,11 +91,9 @@ class VideoSpeechTransformer(TransformerMixin):
                     print("%d" % int(simple_progress * 100. / total_duration))
                     sys.stdout.flush()
                 in_bytes = np.frombuffer(in_bytes, np.uint8)
-                for media_bstring, detector in zip(media_bstrings, speech_detectors):
-                    media_bstring.append(detector(in_bytes))
+                media_bstring.append(detector(in_bytes))
         logger.info('...done.')
-        self.video_speech_results_ = [np.concatenate(media_bstring)
-                                      for media_bstring in media_bstrings]
+        self.video_speech_results_ = np.concatenate(media_bstring)
         return self
 
     def transform(self, *_):
