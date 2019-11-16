@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*- 
+# -*- coding: utf-8 -*-
 import argparse
 import logging
 import sys
@@ -8,7 +8,11 @@ import numpy as np
 from sklearn.pipeline import Pipeline
 
 from .aligners import FFTAligner, MaxScoreAligner
-from .speech_transformers import SubtitleSpeechTransformer, VideoSpeechTransformer
+from .speech_transformers import (
+        SubtitleSpeechTransformer,
+        VideoSpeechTransformer,
+        DeserializeSpeechTransformer
+)
 from .subtitle_parsers import GenericSubtitleParser, SubtitleOffseter, SubtitleScaler
 from .version import __version__
 
@@ -64,6 +68,8 @@ def main():
     parser.add_argument('--reference-encoding',
                         help='What encoding to use for reading / writing reference subtitles '
                              '(if applicable).')
+    parser.add_argument('--serialize-speech', action='store_true',
+                        help='Whether to serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.vlc_mode:
@@ -73,6 +79,10 @@ def main():
         reference_pipe = make_srt_speech_pipeline(
             args, parser=make_srt_parser(args, fmt, encoding=args.reference_encoding or 'infer')
         )
+    elif args.reference.endswith('npy'):
+        reference_pipe = Pipeline([
+            ('deserialize', DeserializeSpeechTransformer())
+        ])
     else:
         if args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
@@ -97,6 +107,12 @@ def main():
     logger.info("extracting speech segments from reference '%s'...", args.reference)
     reference_pipe.fit(args.reference)
     logger.info('...done')
+    if args.serialize_speech:
+        logger.info('serializing speech...')
+        # TODO: better way to substitute extension
+        np.save('.'.join(args.reference.split('.')[:-1]) + '.npy',
+                reference_pipe.transform(None))
+        logger.info('...done')
     logger.info('computing alignments...')
     offset_samples, best_srt_pipe = MaxScoreAligner(FFTAligner).fit_transform(
         reference_pipe.transform(args.reference),

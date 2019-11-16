@@ -121,3 +121,15 @@ class SubtitleSpeechTransformer(TransformerMixin):
 
     def transform(self, *_):
         return self.subtitle_speech_results_
+
+
+class DeserializeSpeechTransformer(TransformerMixin):
+    def __init__(self):
+        self.deserialized_speech_results_ = None
+
+    def fit(self, fname, *_):
+        self.deserialized_speech_results_ = np.load(fname)
+        return self
+
+    def transform(self, *_):
+        return self.deserialized_speech_results_
