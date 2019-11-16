@@ -2,6 +2,8 @@
 import copy
 from datetime import timedelta
 import logging
+import numbers
+import re
 import six
 import sys
 
@@ -209,6 +211,29 @@ class SubtitleOffseter(_SubsMixin, TransformerMixin):
 
     def fit(self, subs, *_):
         self.subs_ = subs.offset(self.td_seconds)
+        return self
+
+    def transform(self, *_):
+        return self.subs_
+
+
+class SubtitleScaler(_SubsMixin, TransformerMixin):
+    def __init__(self, scale_factor):
+        super(_SubsMixin, self).__init__()
+        assert isinstance(scale_factor, numbers.Number)
+        self.scale_factor = scale_factor
+
+    def fit(self, subs, *_):
+        scaled_subs = []
+        for sub in subs:
+            scaled_subs.append(
+                GenericSubtitle(
+                    sub.start * self.scale_factor,
+                    sub.end * self.scale_factor,
+                    sub.inner
+                )
+            )
+        self.subs_ = GenericSubtitlesFile(scaled_subs, format='srt', encoding=subs.encoding)
         return self
 
     def transform(self, *_):
