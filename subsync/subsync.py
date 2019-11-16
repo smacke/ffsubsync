@@ -4,11 +4,12 @@ import argparse
 import logging
 import sys
 
+import numpy as np
 from sklearn.pipeline import Pipeline
 
 from .aligners import FFTAligner, MaxScoreAligner
 from .speech_transformers import SubtitleSpeechTransformer, VideoSpeechTransformer
-from .subtitle_parsers import GenericSubtitleParser, SubtitleOffseter
+from .subtitle_parsers import GenericSubtitleParser, SubtitleOffseter, SubtitleScaler
 from .version import __version__
 
 logging.basicConfig(level=logging.INFO)
@@ -17,13 +18,16 @@ logger = logging.getLogger(__name__)
 FRAME_RATE = 48000
 SAMPLE_RATE = 100
 
+FPS_RATIOS = [24./23.976, 25./23.976, 25./24.]
 
-def make_srt_speech_pipeline(fmt, encoding, max_subtitle_seconds, start_seconds):
+
+def make_srt_speech_pipeline(fmt, encoding, max_subtitle_seconds, start_seconds, scale_factor):
     return Pipeline([
         ('parse', GenericSubtitleParser(fmt=fmt,
                                         encoding=encoding,
                                         max_subtitle_seconds=max_subtitle_seconds,
                                         start_seconds=start_seconds)),
+        ('scale', SubtitleScaler(scale_factor)),
         ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE,
                                                      start_seconds=start_seconds))
     ])
@@ -58,7 +62,7 @@ def main():
         reference_pipe = make_srt_speech_pipeline(fmt,
                                                   args.reference_encoding or 'infer',
                                                   args.max_subtitle_seconds,
-                                                  args.start_seconds)
+                                                  args.start_seconds, 1.0)
     else:
         if args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
@@ -68,18 +72,25 @@ def main():
                                                       start_seconds=args.start_seconds,
                                                       vlc_mode=args.vlc_mode))
         ])
-    srtin_pipe = make_srt_speech_pipeline(args.encoding,
-                                          args.max_subtitle_seconds,
-                                          args.start_seconds)
+    fps_ratios = np.concatenate([[1.], np.array(FPS_RATIOS), 1./np.array(FPS_RATIOS)])
+    srt_pipes = [
+        make_srt_speech_pipeline(args.srtin[-3:],
+                                 args.encoding,
+                                 args.max_subtitle_seconds,
+                                 args.start_seconds,
+                                 scale_factor).fit(args.srtin)
+        for scale_factor in fps_ratios
+    ]
     logger.info('computing alignments...')
     offset_samples, best_srt_pipe = MaxScoreAligner(FFTAligner).fit_transform(
         reference_pipe.fit_transform(args.reference),
-        srtin_pipe.fit(args.srtin)
+        srt_pipes,
     )
     offset_seconds = offset_samples / float(SAMPLE_RATE)
+    scale_step = best_srt_pipe.named_steps['scale']
     logger.info('offset seconds: %.3f', offset_seconds)
-    offseter = SubtitleOffseter(offset_seconds).fit_transform(
-        srtin_pipe.named_steps['parse'].subs_)
+    logger.info('fps scale factor: %.3f', scale_step.scale_factor)
+    offseter = SubtitleOffseter(offset_seconds).fit_transform(scale_step.subs_)
     if args.output_encoding != 'same':
         offseter = offseter.set_encoding(args.output_encoding)
     offseter.write_file(args.srtout)

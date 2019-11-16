@@ -56,7 +56,7 @@ class MaxScoreAligner(TransformerMixin):
             subpipes = [subpipes]
         for subpipe in subpipes:
             if hasattr(subpipe, 'transform'):
-                substring = subpipe.transform()
+                substring = subpipe.transform(None)
             else:
                 substring = subpipe
             self._scores.append((
