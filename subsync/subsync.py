@@ -24,26 +24,58 @@ SAMPLE_RATE = 100
 
 FRAMERATE_RATIOS = [24./23.976, 25./23.976, 25./24.]
 
+DEFAULT_ENCODING = 'infer'
+DEFAULT_MAX_SUBTITLE_SECONDS = 10
+DEFAULT_START_SECONDS = 0
+DEFAULT_SCALE_FACTOR = 1
 
-def make_srt_parser(args, fmt, encoding=None):
+
+def override(args, **kwargs):
+    args_dict = dict(args.__dict__)
+    args_dict.update(kwargs)
+    return args_dict
+
+
+def make_srt_parser(
+        fmt,
+        encoding=DEFAULT_ENCODING,
+        max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
+        start_seconds=DEFAULT_START_SECONDS,
+        **kwargs
+):
     return GenericSubtitleParser(
         fmt=fmt,
-        encoding=encoding or args.encoding,
-        max_subtitle_seconds=args.max_subtitle_seconds,
-        start_seconds=args.start_seconds
+        encoding=encoding,
+        max_subtitle_seconds=max_subtitle_seconds,
+        start_seconds=start_seconds
     )
 
 
-def make_srt_speech_pipeline(args, fmt='srt', scale_factor=1., parser=None):
+def make_srt_speech_pipeline(
+        fmt='srt',
+        encoding=DEFAULT_ENCODING,
+        max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
+        start_seconds=DEFAULT_START_SECONDS,
+        scale_factor=DEFAULT_SCALE_FACTOR,
+        parser=None,
+        **kwargs
+):
     if parser is None:
-        parser = make_srt_parser(args, fmt)
-    assert parser.start_seconds == args.start_seconds
+        parser = make_srt_parser(
+            fmt,
+            encoding=encoding,
+            max_subtitle_seconds=max_subtitle_seconds,
+            start_seconds=start_seconds
+        )
+    assert parser.encoding_to_use == encoding
+    assert parser.max_subtitle_seconds == max_subtitle_seconds
+    assert parser.start_seconds == start_seconds
     return Pipeline([
         ('parse', parser),
         ('scale', SubtitleScaler(scale_factor)),
         ('speech_extract', SubtitleSpeechTransformer(
             sample_rate=SAMPLE_RATE,
-            start_seconds=args.start_seconds
+            start_seconds=start_seconds
         ))
     ])
 
@@ -56,11 +88,11 @@ def main():
                         help='Correct reference (video or srt) to which to sync input subtitles.')
     parser.add_argument('-i', '--srtin', help='Input subtitles file (default=stdin).')
     parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
-    parser.add_argument('--encoding', default='infer',
+    parser.add_argument('--encoding', default=DEFAULT_ENCODING,
                         help='What encoding to use for reading input subtitles.')
-    parser.add_argument('--max-subtitle-seconds', type=float, default=10,
+    parser.add_argument('--max-subtitle-seconds', type=float, default=DEFAULT_MAX_SUBTITLE_SECONDS,
                         help='Maximum duration for a subtitle to appear on-screen.')
-    parser.add_argument('--start-seconds', type=int, default=0,
+    parser.add_argument('--start-seconds', type=int, default=DEFAULT_START_SECONDS,
                         help='Start time for processing.')
     parser.add_argument('--output-encoding', default='same',
                         help='What encoding to use for writing output subtitles '
@@ -77,7 +109,9 @@ def main():
     if args.reference[-3:] in ('srt', 'ssa', 'ass'):
         fmt = args.reference[-3:]
         reference_pipe = make_srt_speech_pipeline(
-            args, parser=make_srt_parser(args, fmt, encoding=args.reference_encoding or 'infer')
+            **override(args, parser=make_srt_parser(fmt,
+                **override(args, encoding=args.reference_encoding or 'infer')
+            ))
         )
     elif args.reference.endswith('npy'):
         reference_pipe = Pipeline([
@@ -95,11 +129,11 @@ def main():
     framerate_ratios = np.concatenate([
         [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
     ])
-    parser = make_srt_parser(args, fmt=args.srtin[-3:])
+    parser = make_srt_parser(fmt=args.srtin[-3:], **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
         make_srt_speech_pipeline(
-            args, scale_factor, parser=parser
+            **override(args, scale_factor=scale_factor, parser=parser)
         ).fit(args.srtin)
         for scale_factor in framerate_ratios
     ]
