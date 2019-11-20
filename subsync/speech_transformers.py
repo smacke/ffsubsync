@@ -58,7 +58,6 @@ class VideoSpeechTransformer(TransformerMixin):
             total_duration = None
         detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)
         media_bstring = []
-        logger.info('extracting speech segments from video %s...', fname)
         ffmpeg_args = ['ffmpeg']
         if self.start_seconds > 0:
             ffmpeg_args.extend([
@@ -92,7 +91,6 @@ class VideoSpeechTransformer(TransformerMixin):
                     sys.stdout.flush()
                 in_bytes = np.frombuffer(in_bytes, np.uint8)
                 media_bstring.append(detector(in_bytes))
-        logger.info('...done.')
         self.video_speech_results_ = np.concatenate(media_bstring)
         return self
 
@@ -108,7 +106,6 @@ class SubtitleSpeechTransformer(TransformerMixin):
         self.max_time_ = None
 
     def fit(self, subs, *_):
-        logger.info('extracting speech segments from subtitles...')
         max_time = 0
         for sub in subs:
             max_time = max(max_time, sub.end.total_seconds())

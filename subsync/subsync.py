@@ -18,18 +18,29 @@ logger = logging.getLogger(__name__)
 FRAME_RATE = 48000
 SAMPLE_RATE = 100
 
-FPS_RATIOS = [24./23.976, 25./23.976, 25./24.]
+FRAMERATE_RATIOS = [24./23.976, 25./23.976, 25./24.]
 
 
-def make_srt_speech_pipeline(fmt, encoding, max_subtitle_seconds, start_seconds, scale_factor):
+def make_srt_parser(args, fmt, encoding=None):
+    return GenericSubtitleParser(
+        fmt=fmt,
+        encoding=encoding or args.encoding,
+        max_subtitle_seconds=args.max_subtitle_seconds,
+        start_seconds=args.start_seconds
+    )
+
+
+def make_srt_speech_pipeline(args, fmt='srt', scale_factor=1., parser=None):
+    if parser is None:
+        parser = make_srt_parser(args, fmt)
+    assert parser.start_seconds == args.start_seconds
     return Pipeline([
-        ('parse', GenericSubtitleParser(fmt=fmt,
-                                        encoding=encoding,
-                                        max_subtitle_seconds=max_subtitle_seconds,
-                                        start_seconds=start_seconds)),
+        ('parse', parser),
         ('scale', SubtitleScaler(scale_factor)),
-        ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE,
-                                                     start_seconds=start_seconds))
+        ('speech_extract', SubtitleSpeechTransformer(
+            sample_rate=SAMPLE_RATE,
+            start_seconds=args.start_seconds
+        ))
     ])
 
 
@@ -59,10 +70,9 @@ def main():
         logger.setLevel(logging.CRITICAL)
     if args.reference[-3:] in ('srt', 'ssa', 'ass'):
         fmt = args.reference[-3:]
-        reference_pipe = make_srt_speech_pipeline(fmt,
-                                                  args.reference_encoding or 'infer',
-                                                  args.max_subtitle_seconds,
-                                                  args.start_seconds, 1.0)
+        reference_pipe = make_srt_speech_pipeline(
+            args, parser=make_srt_parser(args, fmt, encoding=args.reference_encoding or 'infer')
+        )
     else:
         if args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
@@ -72,24 +82,31 @@ def main():
                                                       start_seconds=args.start_seconds,
                                                       vlc_mode=args.vlc_mode))
         ])
-    fps_ratios = np.concatenate([[1.], np.array(FPS_RATIOS), 1./np.array(FPS_RATIOS)])
+    framerate_ratios = np.concatenate([
+        [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
+    ])
+    parser = make_srt_parser(args, fmt=args.srtin[-3:])
+    logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
-        make_srt_speech_pipeline(args.srtin[-3:],
-                                 args.encoding,
-                                 args.max_subtitle_seconds,
-                                 args.start_seconds,
-                                 scale_factor).fit(args.srtin)
-        for scale_factor in fps_ratios
+        make_srt_speech_pipeline(
+            args, scale_factor, parser=parser
+        ).fit(args.srtin)
+        for scale_factor in framerate_ratios
     ]
+    logger.info('...done')
+    logger.info("extracting speech segments from reference '%s'...", args.reference)
+    reference_pipe.fit(args.reference)
+    logger.info('...done')
     logger.info('computing alignments...')
     offset_samples, best_srt_pipe = MaxScoreAligner(FFTAligner).fit_transform(
-        reference_pipe.fit_transform(args.reference),
+        reference_pipe.transform(args.reference),
         srt_pipes,
     )
+    logger.info('...done')
     offset_seconds = offset_samples / float(SAMPLE_RATE)
     scale_step = best_srt_pipe.named_steps['scale']
     logger.info('offset seconds: %.3f', offset_seconds)
-    logger.info('fps scale factor: %.3f', scale_step.scale_factor)
+    logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
     offseter = SubtitleOffseter(offset_seconds).fit_transform(scale_step.subs_)
     if args.output_encoding != 'same':
         offseter = offseter.set_encoding(args.output_encoding)

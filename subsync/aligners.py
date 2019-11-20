@@ -51,7 +51,6 @@ class MaxScoreAligner(TransformerMixin):
         self._scores = []
 
     def fit(self, refstring, subpipes):
-        logger.info('computing alignments...')
         if not isinstance(subpipes, list):
             subpipes = [subpipes]
         for subpipe in subpipes:
@@ -65,7 +64,6 @@ class MaxScoreAligner(TransformerMixin):
                 ),
                 subpipe
             ))
-        logger.info('...done')
         return self
 
     def transform(self, *_):
