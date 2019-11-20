@@ -19,11 +19,11 @@ from .version import __version__
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-FRAME_RATE = 48000
 SAMPLE_RATE = 100
 
 FRAMERATE_RATIOS = [24./23.976, 25./23.976, 25./24.]
 
+DEFAULT_FRAME_RATE = 48000
 DEFAULT_ENCODING = 'infer'
 DEFAULT_MAX_SUBTITLE_SECONDS = 10
 DEFAULT_START_SECONDS = 0
@@ -94,6 +94,8 @@ def main():
                         help='Maximum duration for a subtitle to appear on-screen.')
     parser.add_argument('--start-seconds', type=int, default=DEFAULT_START_SECONDS,
                         help='Start time for processing.')
+    parser.add_argument('--frame-rate', type=int, default=DEFAULT_FRAME_RATE,
+                        help='Frame rate for audio extraction.')
     parser.add_argument('--output-encoding', default='same',
                         help='What encoding to use for writing output subtitles '
                              '(default=same as for input).')
@@ -122,7 +124,7 @@ def main():
             logger.warning('Reference srt encoding specified, but reference was a video file')
         reference_pipe = Pipeline([
             ('speech_extract', VideoSpeechTransformer(sample_rate=SAMPLE_RATE,
-                                                      frame_rate=FRAME_RATE,
+                                                      frame_rate=args.frame_rate,
                                                       start_seconds=args.start_seconds,
                                                       vlc_mode=args.vlc_mode))
         ])

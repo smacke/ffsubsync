@@ -10,9 +10,42 @@ import numpy as np
 from sklearn.base import TransformerMixin
 import tqdm
 import webrtcvad
+try:
+    from auditok import \
+        BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
+except ImportError:
+    pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _make_auditok_detector(sample_rate, frame_rate):
+    bytes_per_frame = 2
+    frames_per_window = frame_rate // sample_rate
+    validator = AudioEnergyValidator(
+        sample_width=bytes_per_frame, energy_threshold=50)
+    tokenizer = StreamTokenizer(
+        validator=validator, min_length=0.2*sample_rate,
+        max_length=int(5*sample_rate),
+        max_continuous_silence=0.25*sample_rate)
+
+    def _detect(asegment):
+        asource = BufferAudioSource(data_buffer=asegment,
+                                    sampling_rate=frame_rate,
+                                    sample_width=bytes_per_frame,
+                                    channels=1)
+        ads = ADSFactory.ads(audio_source=asource, block_dur=1./sample_rate)
+        ads.open()
+        tokens = tokenizer.tokenize(ads)
+        length = (len(asegment)//bytes_per_frame
+                  + frames_per_window - 1)//frames_per_window
+        media_bstring = np.zeros(length+1, dtype=int)
+        for token in tokens:
+            media_bstring[token[1]] += 1
+            media_bstring[token[2]+1] -= 1
+        return (np.cumsum(media_bstring)[:-1] > 0).astype(float)
+    return _detect
 
 
 def _make_webrtcvad_detector(sample_rate, frame_rate):
@@ -56,6 +89,7 @@ class VideoSpeechTransformer(TransformerMixin):
             total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
         except:
             total_duration = None
+        # detector = _make_auditok_detector(self.sample_rate, self.frame_rate)
         detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)
         media_bstring = []
         ffmpeg_args = ['ffmpeg']
