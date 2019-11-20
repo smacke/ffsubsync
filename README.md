@@ -23,7 +23,7 @@ brew install ffmpeg
 ~~~
 Next, grab the script. It should work with both Python 2 and Python 3:
 ~~~
-pip install git+https://github.com/smacke/subsync
+pip install git+https://github.com/smacke/subsync@STABLE
 ~~~
 
 Usage
