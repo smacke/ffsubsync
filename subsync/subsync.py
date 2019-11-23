@@ -89,33 +89,38 @@ def main():
     parser.add_argument('-v', '--version', action='version',
                         version='%(prog)s {version}'.format(version=__version__))
     parser.add_argument('reference',
-                        help='Correct reference (video or srt) to which to sync input subtitles.')
+                        help='Reference (video, srt, or a numpy array with VAD speech) '
+                             'to which to synchronize input subtitles.')
     parser.add_argument('-i', '--srtin', help='Input subtitles file (default=stdin).')
     parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
     parser.add_argument('--encoding', default=DEFAULT_ENCODING,
-                        help='What encoding to use for reading input subtitles.')
+                        help='What encoding to use for reading input subtitles '
+                        '(default=%s).' % DEFAULT_ENCODING)
     parser.add_argument('--max-subtitle-seconds', type=float, default=DEFAULT_MAX_SUBTITLE_SECONDS,
-                        help='Maximum duration for a subtitle to appear on-screen.')
+                        help='Maximum duration for a subtitle to appear on-screen '
+                             '(default=%.3f seconds).' % DEFAULT_MAX_SUBTITLE_SECONDS)
     parser.add_argument('--start-seconds', type=int, default=DEFAULT_START_SECONDS,
-                        help='Start time for processing.')
+                        help='Start time for processing '
+                             '(default=%d seconds).' % DEFAULT_START_SECONDS)
     parser.add_argument('--max-offset-seconds', type=int, default=DEFAULT_MAX_OFFSET_SECONDS,
-                        help='The max allowed offset seconds for any subtitle segment.')
+                        help='The max allowed offset seconds for any subtitle segment '
+                             '(default=%d seconds).' % DEFAULT_MAX_OFFSET_SECONDS)
     parser.add_argument('--frame-rate', type=int, default=DEFAULT_FRAME_RATE,
-                        help='Frame rate for audio extraction.')
+                        help='Frame rate for audio extraction (default=%d).' % DEFAULT_FRAME_RATE)
     parser.add_argument('--output-encoding', default='same',
                         help='What encoding to use for writing output subtitles '
                              '(default=same as for input).')
     parser.add_argument('--reference-encoding',
                         help='What encoding to use for reading / writing reference subtitles '
-                             '(if applicable).')
+                             '(if applicable, default=infer).')
     parser.add_argument('--vad', choices=['webrtc', 'auditok'], default=None,
                         help='Which voice activity detector to use for speech extraction '
-                             '(if using video / audio as a reference).')
+                             '(if using video / audio as a reference, default=webrtc).')
     parser.add_argument('--no-fix-framerate', action='store_true',
                         help='If specified, subsync will not attempt to correct a framerate '
                              'mismatch between reference and subtitles.')
     parser.add_argument('--serialize-speech', action='store_true',
-                        help='Whether to serialize reference speech to a numpy array.')
+                        help='If specified, serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.vlc_mode:
