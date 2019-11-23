@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 import logging
+import os
 import sys
 
 import numpy as np
@@ -165,9 +166,8 @@ def main():
     logger.info('...done')
     if args.serialize_speech:
         logger.info('serializing speech...')
-        # TODO: better way to substitute extension
-        np.save('.'.join(args.reference.split('.')[:-1]) + '.npy',
-                reference_pipe.transform(None))
+        npy_savename = os.path.splitext(args.reference)[0] + '.npy'
+        np.save(npy_savename, reference_pipe.transform(None))
         logger.info('...done')
     logger.info('computing alignments...')
     offset_samples, best_srt_pipe = MaxScoreAligner(
