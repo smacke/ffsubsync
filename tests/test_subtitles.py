@@ -79,7 +79,7 @@ def test_speech_extraction(sample_rate, start_seconds):
     parser = GenericSubtitleParser(start_seconds=start_seconds)
     extractor = SubtitleSpeechTransformer(sample_rate=sample_rate, start_seconds=start_seconds)
     pipe = make_pipeline(parser, extractor)
-    bitstring = pipe.fit_transform(BytesIO(fake_srt))
+    bitstring = pipe.fit_transform(BytesIO(fake_srt)).astype(bool)
     bitstring_shifted_left = np.append(bitstring[1:], [False])
     bitstring_shifted_right = np.append([False], bitstring[:-1])
     bitstring_cumsum = np.cumsum(bitstring)

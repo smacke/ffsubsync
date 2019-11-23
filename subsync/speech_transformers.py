@@ -21,6 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 def _make_auditok_detector(sample_rate, frame_rate):
+    try:
+        from auditok import \
+            BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
+    except ImportError as e:
+        logger.error("""Error: auditok not installed!
+        Consider installing it with `pip install auditok`. Note that auditok
+        is GPLv3 licensed, which means that successfully importing it at
+        runtime creates a derivative work that is GPLv3 licensed. For personal
+        use this is fine, but note that any commercial use that relies on
+        auditok must be open source as per the GPLv3!*
+        *Not legal advice. Consult with a lawyer.
+        """)
+        raise e
     bytes_per_frame = 2
     frames_per_window = frame_rate // sample_rate
     validator = AudioEnergyValidator(
@@ -77,7 +90,8 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
 
 
 class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, sample_rate, frame_rate, start_seconds=0, vlc_mode=False):
+    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, vlc_mode=False):
+        self.vad = vad
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
         self.start_seconds = start_seconds
@@ -89,8 +103,12 @@ class VideoSpeechTransformer(TransformerMixin):
             total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
         except:
             total_duration = None
-        # detector = _make_auditok_detector(self.sample_rate, self.frame_rate)
-        detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)
+        if self.vad == 'webrtc':
+            detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)
+        elif self.vad == 'auditok':
+            detector = _make_auditok_detector(self.sample_rate, self.frame_rate)
+        else:
+            raise ValueError('unknown vad: %s' % self.vad)
         media_bstring = []
         ffmpeg_args = ['ffmpeg']
         if self.start_seconds > 0:
@@ -133,9 +151,10 @@ class VideoSpeechTransformer(TransformerMixin):
 
 
 class SubtitleSpeechTransformer(TransformerMixin):
-    def __init__(self, sample_rate, start_seconds=0):
+    def __init__(self, sample_rate, start_seconds=0, framerate_ratio=1.):
         self.sample_rate = sample_rate
         self.start_seconds = start_seconds
+        self.framerate_ratio = framerate_ratio
         self.subtitle_speech_results_ = None
         self.max_time_ = None
 
@@ -144,12 +163,12 @@ class SubtitleSpeechTransformer(TransformerMixin):
         for sub in subs:
             max_time = max(max_time, sub.end.total_seconds())
         self.max_time_ = max_time - self.start_seconds
-        samples = np.zeros(int(max_time * self.sample_rate) + 2, dtype=bool)
+        samples = np.zeros(int(max_time * self.sample_rate) + 2, dtype=float)
         for sub in subs:
             start = int(round((sub.start.total_seconds() - self.start_seconds) * self.sample_rate))
             duration = sub.end.total_seconds() - sub.start.total_seconds()
             end = start + int(round(duration * self.sample_rate))
-            samples[start:end] = True
+            samples[start:end] = min(1. / self.framerate_ratio, 1.)
         self.subtitle_speech_results_ = samples
         return self
 

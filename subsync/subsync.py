@@ -28,6 +28,8 @@ DEFAULT_ENCODING = 'infer'
 DEFAULT_MAX_SUBTITLE_SECONDS = 10
 DEFAULT_START_SECONDS = 0
 DEFAULT_SCALE_FACTOR = 1
+DEFAULT_VAD = 'webrtc'
+DEFAULT_MAX_OFFSET_SECONDS = 600
 
 
 def override(args, **kwargs):
@@ -75,7 +77,8 @@ def make_srt_speech_pipeline(
         ('scale', SubtitleScaler(scale_factor)),
         ('speech_extract', SubtitleSpeechTransformer(
             sample_rate=SAMPLE_RATE,
-            start_seconds=start_seconds
+            start_seconds=start_seconds,
+            framerate_ratio=scale_factor,
         ))
     ])
 
@@ -94,6 +97,8 @@ def main():
                         help='Maximum duration for a subtitle to appear on-screen.')
     parser.add_argument('--start-seconds', type=int, default=DEFAULT_START_SECONDS,
                         help='Start time for processing.')
+    parser.add_argument('--max-offset-seconds', type=int, default=DEFAULT_MAX_OFFSET_SECONDS,
+                        help='The max allowed offset seconds for any subtitle segment.')
     parser.add_argument('--frame-rate', type=int, default=DEFAULT_FRAME_RATE,
                         help='Frame rate for audio extraction.')
     parser.add_argument('--output-encoding', default='same',
@@ -102,6 +107,12 @@ def main():
     parser.add_argument('--reference-encoding',
                         help='What encoding to use for reading / writing reference subtitles '
                              '(if applicable).')
+    parser.add_argument('--vad', choices=['webrtc', 'auditok'], default=None,
+                        help='Which voice activity detector to use for speech extraction '
+                             '(if using video / audio as a reference).')
+    parser.add_argument('--no-fix-framerate', action='store_true',
+                        help='If specified, subsync will not attempt to correct a framerate '
+                             'mismatch between reference and subtitles.')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='Whether to serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
@@ -110,27 +121,36 @@ def main():
         logger.setLevel(logging.CRITICAL)
     if args.reference[-3:] in ('srt', 'ssa', 'ass'):
         fmt = args.reference[-3:]
+        if args.vad is not None:
+            logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = make_srt_speech_pipeline(
             **override(args, parser=make_srt_parser(fmt,
                 **override(args, encoding=args.reference_encoding or 'infer')
             ))
         )
     elif args.reference.endswith('npy'):
+        if args.vad is not None:
+            logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = Pipeline([
             ('deserialize', DeserializeSpeechTransformer())
         ])
     else:
+        vad = args.vad or DEFAULT_VAD
         if args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
         reference_pipe = Pipeline([
-            ('speech_extract', VideoSpeechTransformer(sample_rate=SAMPLE_RATE,
+            ('speech_extract', VideoSpeechTransformer(vad=vad,
+                                                      sample_rate=SAMPLE_RATE,
                                                       frame_rate=args.frame_rate,
                                                       start_seconds=args.start_seconds,
                                                       vlc_mode=args.vlc_mode))
         ])
-    framerate_ratios = np.concatenate([
-        [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
-    ])
+    if args.no_fix_framerate:
+        framerate_ratios = [1.]
+    else:
+        framerate_ratios = np.concatenate([
+            [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
+        ])
     parser = make_srt_parser(fmt=args.srtin[-3:], **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
@@ -150,7 +170,9 @@ def main():
                 reference_pipe.transform(None))
         logger.info('...done')
     logger.info('computing alignments...')
-    offset_samples, best_srt_pipe = MaxScoreAligner(FFTAligner).fit_transform(
+    offset_samples, best_srt_pipe = MaxScoreAligner(
+        FFTAligner, SAMPLE_RATE, args.max_offset_seconds
+    ).fit_transform(
         reference_pipe.transform(args.reference),
         srt_pipes,
     )

@@ -43,11 +43,15 @@ class FFTAligner(TransformerMixin):
 
 
 class MaxScoreAligner(TransformerMixin):
-    def __init__(self, base_aligner):
+    def __init__(self, base_aligner, sample_rate=None, max_offset_seconds=None):
         if isinstance(base_aligner, type):
             self.base_aligner = base_aligner()
         else:
             self.base_aligner = base_aligner
+        if sample_rate is None or max_offset_seconds is None:
+            self.max_offset_samples = None
+        else:
+            self.max_offset_samples = abs(max_offset_seconds * sample_rate)
         self._scores = []
 
     def fit(self, refstring, subpipes):
@@ -67,5 +71,8 @@ class MaxScoreAligner(TransformerMixin):
         return self
 
     def transform(self, *_):
-        (score, offset), subpipe = max(self._scores)
+        scores = self._scores
+        if self.max_offset_samples is not None:
+            scores = filter(lambda s: abs(s[0][1]) <= self.max_offset_samples, scores)
+        (score, offset), subpipe = max(scores)
         return offset, subpipe
