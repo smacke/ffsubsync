@@ -2,7 +2,7 @@ subsync
 =======
 
 [![Build Status](https://travis-ci.org/smacke/subsync.svg?branch=master)](https://travis-ci.org/smacke/subsync)
-![](https://github.com/actions/hello-world/workflows/.github/workflows/ci.yml/badge.svg)
+![](https://github.com/smacke/subsync/workflows/Subsync_CI/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Language-agnostic automatic synchronization of subtitles with video, so that
