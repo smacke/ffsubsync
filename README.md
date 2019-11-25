@@ -8,10 +8,6 @@ subsync
 Language-agnostic automatic synchronization of subtitles with video, so that
 subtitles are aligned to the correct starting point within the video.
 
-The implementation for this project was started during HackIllinois 2019, for
-which it received an **_Honorable Mention_** (ranked in the top 5 projects,
-excluding projects that won company-specific prizes).
-
 Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
 ![](tearing-me-apart-wrong.gif)  |  ![](tearing-me-apart-correct.gif)
@@ -131,6 +127,12 @@ Future Work
    robustly integrated with VLC, either directly in the VLC core, or as a
    plugin.  If you or anyone you know has ideas for how to accomplish this,
    please let me know!
+
+History
+-------
+The implementation for this project was started during HackIllinois 2019, for
+which it received an **_Honorable Mention_** (ranked in the top 5 projects,
+excluding projects that won company-specific prizes).
 
 Credits
 -------
