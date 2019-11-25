@@ -1,4 +1,4 @@
-name: Python application
+name: Subsync_CI
 
 on: [push]
 
