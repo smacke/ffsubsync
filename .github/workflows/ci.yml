@@ -9,7 +9,10 @@ jobs:
     
     strategy:
       matrix:
-        os: [ 'macos-latest', 'ubuntu-latest', 'windows-2016' ]
+        exclude:
+          - os: windows-latest
+            python-version: 2.7.x
+        os: [ 'macos-latest', 'ubuntu-latest', 'windows-latest' ]
         python-version: [ '2.7.x', '3.5.x', '3.6.x', '3.7.x' ]
 
     steps:
