@@ -6,15 +6,19 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: [ '2.7.x', '3.4.x', '3.5.x', '3.6.x', '3.7.x' ]
 
     steps:
     - uses: actions/checkout@v1
       with:
         fetch-depth: 1
-    - name: Set up Python 3.7
+    - name: Set up Python
       uses: actions/setup-python@v1
       with:
-        python-version: 3.7
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
