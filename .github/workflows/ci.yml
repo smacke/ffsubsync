@@ -9,7 +9,7 @@ jobs:
     
     strategy:
       matrix:
-        os: [ 'ubuntu-latest', 'windows-latest', 'macos-latest' ]
+        os: [ 'macos-latest', 'ubuntu-latest', 'windows-2016' ]
         python-version: [ '2.7.x', '3.5.x', '3.6.x', '3.7.x' ]
 
     steps:
