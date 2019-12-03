@@ -1,7 +1,6 @@
 subsync
 =======
 
-[![Build Status](https://travis-ci.org/smacke/subsync.svg?branch=master)](https://travis-ci.org/smacke/subsync)
 [![](https://github.com/smacke/subsync/workflows/Subsync_CI/badge.svg)](https://github.com/smacke/subsync/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
