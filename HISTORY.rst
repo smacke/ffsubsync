@@ -83,3 +83,7 @@ History
 0.2.15 (2019-10-11)
 ------------------
 * Revert changes from 0.2.12 (caused regression on Windows).
+
+0.2.16 (2019-12-04)
+------------------
+* Revert changes from 0.2.9 now that srt parses weird timestamps robustly.

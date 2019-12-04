@@ -11,15 +11,15 @@ from subsync.speech_transformers import SubtitleSpeechTransformer
 from subsync.subtitle_parsers import SrtParser, SrtOffseter
 
 fake_srt = b"""1
-00:00:00,178 --> 00:00:02,416294
+00:00:00,178 --> 00:00:01,1416
 <i>Previously on "Your favorite TV show..."</i>
 
 2
-00:00:02,8283 --> 00:00:04,549
+00:00:01,1828 --> 00:00:04,549
 Oh hi, Mark.
 
 3
-00:00:04,6530 --> 00:00:06,0623
+00:00:04,653 --> 00:00:03,3062
 You are tearing me apart, Lisa!
 """
 

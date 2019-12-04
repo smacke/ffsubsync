@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-import re
 import sys
 from datetime import timedelta
 
@@ -12,12 +11,9 @@ from .file_utils import open_file
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TS_REGEX = u"[,.:，．。：]".join([r"(\d+", r"\d{2}", r"\d{2}", r")(\d{3})\d+"])
-
 
 def _srt_parse(s, max_subtitle_seconds=None, start_seconds=0, tolerant=True):
     start_time = timedelta(seconds=start_seconds)
-    s = re.sub(TS_REGEX, r"\1\2", s)
     subs = srt.parse(s)
     subs_list = []
     max_duration = timedelta(days=1)
