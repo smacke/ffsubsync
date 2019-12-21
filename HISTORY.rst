@@ -87,3 +87,7 @@ History
 0.2.16 (2019-12-04)
 ------------------
 * Revert changes from 0.2.9 now that srt parses weird timestamps robustly.
+
+0.2.17 (2019-12-21)
+------------------
+* Try to correct for framerate differences by picking best framerate ratio.
