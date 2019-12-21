@@ -1,4 +1,4 @@
-name: Subsync_CI
+name: CI
 
 on: [push]
 

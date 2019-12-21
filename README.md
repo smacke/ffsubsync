@@ -1,7 +1,7 @@
 subsync
 =======
 
-[![](https://github.com/smacke/subsync/workflows/Subsync_CI/badge.svg)](https://github.com/smacke/subsync/actions)
+[![](https://github.com/smacke/subsync/workflows/CI/badge.svg)](https://github.com/smacke/subsync/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Language-agnostic automatic synchronization of subtitles with video, so that
