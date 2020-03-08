@@ -3,3 +3,4 @@ scratch-notebooks/
 build
 dist
 *.egg-info
+.vim

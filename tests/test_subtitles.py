@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.pipeline import make_pipeline
 
 from subsync.speech_transformers import SubtitleSpeechTransformer
-from subsync.subtitle_parsers import SrtParser, SrtOffseter
+from subsync.subtitle_parsers import GenericSubtitleParser, SubtitleOffseter
 
 fake_srt = b"""1
 00:00:00,178 --> 00:00:01,1416
@@ -33,25 +33,25 @@ You are tearing me apart, Lisa!
 
 @pytest.mark.parametrize('start_seconds', [0, 2, 4, 6])
 def test_start_seconds(start_seconds):
-    parser_zero = SrtParser(start_seconds=0)
+    parser_zero = GenericSubtitleParser(start_seconds=0)
     parser_zero.fit(BytesIO(fake_srt))
-    parser = SrtParser(start_seconds=start_seconds)
+    parser = GenericSubtitleParser(start_seconds=start_seconds)
     parser.fit(BytesIO(fake_srt))
     expected = [sub for sub in parser_zero.subs_ if sub.start >= timedelta(seconds=start_seconds)]
-    assert expected == parser.subs_
+    assert all(esub == psub for esub, psub in zip(expected, parser.subs_))
 
 
 @pytest.mark.parametrize('max_seconds', [1, 1.5, 2.0, 2.5])
 def test_max_seconds(max_seconds):
-    parser = SrtParser(max_subtitle_seconds=max_seconds)
+    parser = GenericSubtitleParser(max_subtitle_seconds=max_seconds)
     parser.fit(BytesIO(fake_srt))
     assert max(sub.end - sub.start for sub in parser.subs_) <= timedelta(seconds=max_seconds)
 
 
 @pytest.mark.parametrize('encoding', ['utf-8', 'ascii', 'latin-1'])
 def test_same_encoding(encoding):
-    parser = SrtParser(encoding=encoding)
-    offseter = SrtOffseter(1)
+    parser = GenericSubtitleParser(encoding=encoding)
+    offseter = SubtitleOffseter(1)
     pipe = make_pipeline(parser, offseter)
     pipe.fit(BytesIO(fake_srt))
     assert parser.subs_.encoding == encoding
@@ -62,8 +62,8 @@ def test_same_encoding(encoding):
 
 @pytest.mark.parametrize('offset', [1, 1.5, -2.3])
 def test_offset(offset):
-    parser = SrtParser()
-    offseter = SrtOffseter(offset)
+    parser = GenericSubtitleParser()
+    offseter = SubtitleOffseter(offset)
     pipe = make_pipeline(parser, offseter)
     pipe.fit(BytesIO(fake_srt))
     for sub_orig, sub_offset in zip(parser.subs_, offseter.subs_):
@@ -76,7 +76,7 @@ def test_offset(offset):
 @pytest.mark.parametrize('sample_rate,start_seconds',
                          itertools.product([10, 20, 100, 300], [0, 2, 4, 6]))
 def test_speech_extraction(sample_rate, start_seconds):
-    parser = SrtParser(start_seconds=start_seconds)
+    parser = GenericSubtitleParser(start_seconds=start_seconds)
     extractor = SubtitleSpeechTransformer(sample_rate=sample_rate, start_seconds=start_seconds)
     pipe = make_pipeline(parser, extractor)
     bitstring = pipe.fit_transform(BytesIO(fake_srt))
@@ -96,7 +96,7 @@ def test_speech_extraction(sample_rate, start_seconds):
 
 
 def test_max_time_found():
-    parser = SrtParser()
+    parser = GenericSubtitleParser()
     extractor = SubtitleSpeechTransformer(sample_rate=100)
     pipe = make_pipeline(parser, extractor)
     pipe.fit(BytesIO(fake_srt))

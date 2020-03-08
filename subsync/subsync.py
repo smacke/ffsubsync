@@ -8,7 +8,7 @@ from sklearn.pipeline import Pipeline
 
 from .aligners import FFTAligner, MaxScoreAligner
 from .speech_transformers import SubtitleSpeechTransformer, VideoSpeechTransformer
-from .subtitle_parsers import SrtParser, SrtOffseter
+from .subtitle_parsers import GenericSubtitleParser, SubtitleOffseter
 from .version import __version__
 
 logging.basicConfig(level=logging.INFO)
@@ -20,9 +20,9 @@ SAMPLE_RATE = 100
 
 def make_srt_speech_pipeline(encoding, max_subtitle_seconds, start_seconds):
     return Pipeline([
-        ('parse', SrtParser(encoding=encoding,
-                            max_subtitle_seconds=max_subtitle_seconds,
-                            start_seconds=start_seconds)),
+        ('parse', GenericSubtitleParser(encoding=encoding,
+                                        max_subtitle_seconds=max_subtitle_seconds,
+                                        start_seconds=start_seconds)),
         ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE,
                                                      start_seconds=start_seconds))
     ])
@@ -52,7 +52,7 @@ def main():
     args = parser.parse_args()
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
-    if args.reference.endswith('srt'):
+    if args.reference[-3:] in ('srt', 'ssa', 'ass'):
         reference_pipe = make_srt_speech_pipeline(args.reference_encoding or 'infer',
                                                   args.max_subtitle_seconds,
                                                   args.start_seconds)
@@ -74,9 +74,11 @@ def main():
         reference_pipe.fit_transform(args.reference)
     ) / float(SAMPLE_RATE)
     logger.info('offset seconds: %.3f', offset_seconds)
-    SrtOffseter(offset_seconds).fit_transform(
-        srtin_pipe.named_steps['parse'].subs_).set_encoding(
-        args.output_encoding).write_file(args.srtout)
+    offseter = SubtitleOffseter(offset_seconds).fit_transform(
+        srtin_pipe.named_steps['parse'].subs_)
+    if args.output_encoding != 'same':
+        offseter = offseter.set_encoding(args.output_encoding)
+    offseter.write_file(args.srtout)
     return 0
 
 
