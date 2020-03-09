@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import copy
-import logging
-import sys
 from datetime import timedelta
+import logging
+import six
+import sys
 
 from sklearn.base import TransformerMixin
 import pysubs2
@@ -148,7 +149,7 @@ class GenericSubtitlesFile(object):
         else:
             raise NotImplementedError('unsupported format: %s' % self.format)
 
-        if sys.version_info[0] > 2:
+        if six.PY3:
             with open(fname or sys.stdout.fileno(), 'wb', encoding=self.encoding) as f:
                 f.write(to_write)
         else:
