@@ -130,9 +130,13 @@ def main():
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = make_srt_speech_pipeline(
-            **override(args, parser=make_srt_parser(fmt,
-                **override(args, encoding=args.reference_encoding or 'infer')
-            ))
+            **override(
+                args,
+                parser=make_srt_parser(
+                    fmt,
+                    **override(args, encoding=args.reference_encoding or 'infer')
+                )
+            )
         )
     elif args.reference.endswith('npy'):
         if args.vad is not None:
