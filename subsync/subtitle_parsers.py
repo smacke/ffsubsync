@@ -157,14 +157,15 @@ class GenericSubtitlesFile(object):
 
 
 class GenericSubtitleParser(_SubsMixin, TransformerMixin):
-    def __init__(self, encoding='infer', max_subtitle_seconds=None, start_seconds=0):
+    def __init__(self, fmt='srt', encoding='infer', max_subtitle_seconds=None, start_seconds=0):
         super(self.__class__, self).__init__()
+        self.format = fmt
         self.encoding_to_use = encoding
         self.sub_skippers = []
         self.max_subtitle_seconds = max_subtitle_seconds
         self.start_seconds = start_seconds
 
-    def fit(self, fname, *_, format='srt'):
+    def fit(self, fname, *_):
         encodings_to_try = (self.encoding_to_use,)
         if self.encoding_to_use == 'infer':
             encodings_to_try = ('utf-8', 'utf-8-sig', 'chinese', 'latin-1', 'utf-16')
@@ -174,12 +175,12 @@ class GenericSubtitleParser(_SubsMixin, TransformerMixin):
         for encoding in encodings_to_try:
             try:
                 decoded_subs = subs.decode(encoding).strip()
-                if format == 'srt':
+                if self.format == 'srt':
                     parsed_subs = srt.parse(decoded_subs)
-                elif format in ('ass', 'ssa'):
+                elif self.format in ('ass', 'ssa'):
                     parsed_subs = pysubs2.SSAFile.from_string(decoded_subs)
                 else:
-                    raise NotImplementedError('unsupported format: %s' % format)
+                    raise NotImplementedError('unsupported format: %s' % self.format)
                 self.subs_ = GenericSubtitlesFile(
                     _preprocess_subs(parsed_subs,
                                      max_subtitle_seconds=self.max_subtitle_seconds,

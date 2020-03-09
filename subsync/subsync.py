@@ -18,9 +18,10 @@ FRAME_RATE = 48000
 SAMPLE_RATE = 100
 
 
-def make_srt_speech_pipeline(encoding, max_subtitle_seconds, start_seconds):
+def make_srt_speech_pipeline(fmt, encoding, max_subtitle_seconds, start_seconds):
     return Pipeline([
-        ('parse', GenericSubtitleParser(encoding=encoding,
+        ('parse', GenericSubtitleParser(fmt=fmt,
+                                        encoding=encoding,
                                         max_subtitle_seconds=max_subtitle_seconds,
                                         start_seconds=start_seconds)),
         ('speech_extract', SubtitleSpeechTransformer(sample_rate=SAMPLE_RATE,
@@ -53,7 +54,9 @@ def main():
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
     if args.reference[-3:] in ('srt', 'ssa', 'ass'):
-        reference_pipe = make_srt_speech_pipeline(args.reference_encoding or 'infer',
+        fmt = args.reference[-3:]
+        reference_pipe = make_srt_speech_pipeline(fmt,
+                                                  args.reference_encoding or 'infer',
                                                   args.max_subtitle_seconds,
                                                   args.start_seconds)
     else:
