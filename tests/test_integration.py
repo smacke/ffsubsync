@@ -2,6 +2,7 @@
 
 import filecmp
 import os
+import shutil
 import tempfile
 import pytest
 try:
@@ -33,7 +34,11 @@ def gen_args():
 @pytest.mark.integration
 @pytest.mark.parametrize('args', gen_args())
 def test_sync_matches_ground_truth(args):
-    with tempfile.TemporaryDirectory() as dirpath:
+    # context manager TemporaryDirectory not available on py2
+    dirpath = tempfile.mkdtemp()
+    try:
         args.srtout = os.path.join(dirpath, 'test.srt')
         assert subsync.run(args) == 0
         assert filecmp.cmp(args.srtout, args.truth, shallow=False)
+    finally:
+        shutil.rmtree(dirpath)
