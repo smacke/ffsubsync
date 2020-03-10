@@ -7,16 +7,23 @@ import pytest
 import yaml
 from subsync import subsync
 
+SYNC_TESTS = 'sync_tests'
+REF = 'reference'
+SYNCED = 'synchronized'
+UNSYNCED = 'unsynchronized'
+
 
 def gen_args():
     def test_path(fname):
         return os.path.join('data', fname)
+    if 'INTEGRATION' not in os.environ or os.environ['INTEGRATION'] == 0:
+        return
     with open('data/integration-testing-config.yaml', 'r') as f:
         config = yaml.load(f, yaml.SafeLoader)
     parser = subsync.make_parser()
-    for test in config['sync_tests']:
-        args = parser.parse_args([test_path(test['reference']), '-i', test_path(test['unsynchronized'])])
-        args.truth = test_path(test['synchronized'])
+    for test in config[SYNC_TESTS]:
+        args = parser.parse_args([test_path(test[REF]), '-i', test_path(test[UNSYNCED])])
+        args.truth = test_path(test[SYNCED])
         yield args
 
 
