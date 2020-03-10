@@ -18,9 +18,10 @@ jobs:
         python-version: [ '2.7.x', '3.5.x', '3.6.x', '3.7.x' ]
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
       with:
         fetch-depth: 1
+        submodules: true
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
@@ -39,6 +40,9 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         #flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         flake8 . --exit-zero  
-    - name: Test with pytest
+    - name: Run unit tests with pytest
       run: |
         pytest -v -m 'not integration' tests/
+    - name: Run integration tests with pytest
+      run: |
+        INTEGRATION=1 pytest -v -m 'integration' tests/

@@ -18,10 +18,10 @@ UNSYNCED = 'unsynchronized'
 
 def gen_args():
     def test_path(fname):
-        return os.path.join('data', fname)
+        return os.path.join('test-data', fname)
     if 'INTEGRATION' not in os.environ or os.environ['INTEGRATION'] == 0:
         return
-    with open('data/integration-testing-config.yaml', 'r') as f:
+    with open('test-data/integration-testing-config.yaml', 'r') as f:
         config = yaml.load(f, yaml.SafeLoader)
     parser = subsync.make_parser()
     for test in config[SYNC_TESTS]:
