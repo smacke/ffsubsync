@@ -18,12 +18,16 @@ jobs:
         python-version: [ '2.7.x', '3.5.x', '3.6.x', '3.7.x' ]
 
     steps:
-      # TODO: bump back to v2 once submodules is merged into v2
-      # ref: https://github.com/actions/checkout/issues/176
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v2
       with:
         fetch-depth: 1
-        submodules: true
+    - name: Checkout submodules
+      shell: bash
+      run: |
+        # From https://github.com/actions/checkout/issues/116#issuecomment-583221947
+        git config --global url."https://github.com/".insteadOf "git@github.com:"
+        git submodule sync --recursive
+        git -c "http.extraheader=Authorization: basic ${{secrets.GITHUB_ACCESS_TOKEN}}" -c protocol.version=2 submodule update --init --force --recursive --depth=1
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
