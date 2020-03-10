@@ -4,7 +4,10 @@ import filecmp
 import os
 import tempfile
 import pytest
-import yaml
+try:
+    import yaml
+except ImportError:  # pyyaml does not work with py3.4
+    pass
 from subsync import subsync
 
 SYNC_TESTS = 'sync_tests'
