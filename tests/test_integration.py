@@ -20,7 +20,7 @@ def gen_args():
         yield args
 
 
-@pytest.mark.end_to_end
+@pytest.mark.integration
 @pytest.mark.parametrize('args', gen_args())
 def test_sync_matches_ground_truth(args):
     with tempfile.TemporaryDirectory() as dirpath:
