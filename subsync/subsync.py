@@ -166,7 +166,7 @@ def main():
     logger.info('...done')
     if args.serialize_speech:
         logger.info('serializing speech...')
-        npy_savename = os.path.splitext(args.reference)[0] + '.npy'
+        npy_savename = os.path.splitext(args.reference)[0] + '.npz'
         np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
         logger.info('...done')
         if args.srtin is None:
