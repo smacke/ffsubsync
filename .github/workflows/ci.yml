@@ -21,13 +21,9 @@ jobs:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 1
-    - name: Checkout submodules
-      shell: bash
-      run: |
-        # From https://github.com/actions/checkout/issues/116#issuecomment-583221947
-        git config --global url."https://github.com/".insteadOf "git@github.com:"
-        git submodule sync --recursive
-        git -c "http.extraheader=Authorization: basic ${{secrets.GITHUB_ACCESS_TOKEN}}" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+    - uses: jwsi/submodule-checkout@v1
+      with:
+        ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
