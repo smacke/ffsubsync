@@ -41,4 +41,4 @@ jobs:
         flake8 . --exit-zero  
     - name: Test with pytest
       run: |
-        pytest -v tests/
+        pytest -v -m 'not integration' tests/
