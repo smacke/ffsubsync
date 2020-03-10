@@ -151,12 +151,13 @@ class GenericSubtitlesFile(object):
         else:
             raise NotImplementedError('unsupported format: %s' % self.format)
 
+        to_write = to_write.encode(self.encoding)
         if six.PY3:
-            with open(fname or sys.stdout.fileno(), 'wb', encoding=self.encoding) as f:
+            with open(fname or sys.stdout.fileno(), 'wb') as f:
                 f.write(to_write)
         else:
             with (fname and open(fname, 'wb')) or sys.stdout as f:
-                f.write(to_write.encode(self.encoding))
+                f.write(to_write)
 
 
 class GenericSubtitleParser(_SubsMixin, TransformerMixin):
