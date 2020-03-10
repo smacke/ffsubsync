@@ -22,11 +22,11 @@ jobs:
       with:
         fetch-depth: 1
     - uses: jwsi/submodule-checkout@v1
+      if: matrix.os == 'ubuntu-latest'
       with:
         ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
     - name: Set up Python
       uses: actions/setup-python@v1
-      if: matrix.os == 'ubuntu-latest'
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
