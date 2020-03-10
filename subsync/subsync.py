@@ -125,20 +125,20 @@ def main():
     args = parser.parse_args()
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
-    if args.reference[-3:] in ('srt', 'ssa', 'ass'):
-        fmt = args.reference[-3:]
+    ref_format = args.reference[-3:]
+    if ref_format in ('srt', 'ssa', 'ass'):
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = make_srt_speech_pipeline(
             **override(
                 args,
                 parser=make_srt_parser(
-                    fmt,
+                    ref_format,
                     **override(args, encoding=args.reference_encoding or 'infer')
                 )
             )
         )
-    elif args.reference.endswith('npy'):
+    elif ref_format == 'npy':
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = Pipeline([
