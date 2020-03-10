@@ -229,8 +229,9 @@ class SubtitleScaler(_SubsMixin, TransformerMixin):
         for sub in subs:
             scaled_subs.append(
                 GenericSubtitle(
-                    sub.start * self.scale_factor,
-                    sub.end * self.scale_factor,
+                    # py2 doesn't support direct multiplication of timedelta w/ float
+                    timedelta(seconds=sub.start.total_seconds() * self.scale_factor),
+                    timedelta(seconds=sub.end.total_seconds() * self.scale_factor),
                     sub.inner
                 )
             )
