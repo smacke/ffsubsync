@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*- 
 import logging
-import os
 import subprocess
 import sys
 from datetime import timedelta
@@ -10,11 +9,6 @@ import numpy as np
 from sklearn.base import TransformerMixin
 import tqdm
 import webrtcvad
-try:
-    from auditok import \
-        BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
-except ImportError:
-    pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -181,7 +175,14 @@ class DeserializeSpeechTransformer(TransformerMixin):
         self.deserialized_speech_results_ = None
 
     def fit(self, fname, *_):
-        self.deserialized_speech_results_ = np.load(fname)
+        speech = np.load(fname)
+        if hasattr(speech, 'files'):
+            if 'speech' in speech.files:
+                speech = speech['speech']
+            else:
+                raise ValueError('could not find "speech" array in '
+                                 'serialized file; only contains: %s' % speech.files)
+        self.deserialized_speech_results_ = speech
         return self
 
     def transform(self, *_):

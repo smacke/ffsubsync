@@ -138,7 +138,7 @@ def main():
                 )
             )
         )
-    elif ref_format == 'npy':
+    elif ref_format in ('npy', 'npz'):
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = Pipeline([
@@ -167,7 +167,7 @@ def main():
     if args.serialize_speech:
         logger.info('serializing speech...')
         npy_savename = os.path.splitext(args.reference)[0] + '.npy'
-        np.save(npy_savename, reference_pipe.transform(args.reference))
+        np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
         logger.info('...done')
         if args.srtin is None:
             logger.info('unsynchronized subtitle file not specified; skipping synchronization')
