@@ -26,5 +26,5 @@ install:
 #    packages: ffmpeg
 
 script:
-  - pytest -v tests/
+  - pytest -v -m 'not end_to_end' tests/
   - flake8 . --exit-zero
