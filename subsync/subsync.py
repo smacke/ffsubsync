@@ -161,6 +161,14 @@ def main():
         framerate_ratios = np.concatenate([
             [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
         ])
+    if args.serialize_speech:
+        logger.info('serializing speech...')
+        npy_savename = os.path.splitext(args.reference)[0] + '.npy'
+        np.save(npy_savename, reference_pipe.transform(None))
+        logger.info('...done')
+        if args.srtin is None:
+            logger.info('unsynchronized subtitle file not specified; skipping synchronization')
+            return 0
     parser = make_srt_parser(fmt=args.srtin[-3:], **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
@@ -173,11 +181,6 @@ def main():
     logger.info("extracting speech segments from reference '%s'...", args.reference)
     reference_pipe.fit(args.reference)
     logger.info('...done')
-    if args.serialize_speech:
-        logger.info('serializing speech...')
-        npy_savename = os.path.splitext(args.reference)[0] + '.npy'
-        np.save(npy_savename, reference_pipe.transform(None))
-        logger.info('...done')
     logger.info('computing alignments...')
     offset_samples, best_srt_pipe = MaxScoreAligner(
         FFTAligner, SAMPLE_RATE, args.max_offset_seconds
