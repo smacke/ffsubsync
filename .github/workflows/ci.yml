@@ -18,7 +18,9 @@ jobs:
         python-version: [ '2.7.x', '3.5.x', '3.6.x', '3.7.x' ]
 
     steps:
-    - uses: actions/checkout@v2
+      # TODO: bump back to v2 once submodules is merged into v2
+      # ref: https://github.com/actions/checkout/issues/176
+    - uses: actions/checkout@master
       with:
         fetch-depth: 1
         submodules: true
