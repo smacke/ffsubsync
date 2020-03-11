@@ -171,14 +171,16 @@ class GenericSubtitleParser(_SubsMixin, TransformerMixin):
 
     def fit(self, fname, *_):
         encodings_to_try = (self.encoding_to_use,)
+        errors = 'replace'
         if self.encoding_to_use == 'infer':
             encodings_to_try = ('utf-8', 'utf-8-sig', 'BIG5', 'chinese', 'gb18030', 'latin-1', 'utf-16')
+            errors = 'strict'
         with open_file(fname, 'rb') as f:
             subs = f.read()
         exc = None
         for encoding in encodings_to_try:
             try:
-                decoded_subs = subs.decode(encoding).strip()
+                decoded_subs = subs.decode(encoding, errors=errors).strip()
                 if self.format == 'srt':
                     parsed_subs = srt.parse(decoded_subs)
                 elif self.format in ('ass', 'ssa'):
