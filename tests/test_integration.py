@@ -15,6 +15,7 @@ SYNC_TESTS = 'sync_tests'
 REF = 'reference'
 SYNCED = 'synchronized'
 UNSYNCED = 'unsynchronized'
+SKIP = 'skip'
 
 
 def gen_args():
@@ -26,6 +27,8 @@ def gen_args():
         config = yaml.load(f, yaml.SafeLoader)
     parser = subsync.make_parser()
     for test in config[SYNC_TESTS]:
+        if SKIP in test and test[SKIP]:
+            continue
         args = parser.parse_args([test_path(test[REF]), '-i', test_path(test[UNSYNCED])])
         args.truth = test_path(test[SYNCED])
         yield args
