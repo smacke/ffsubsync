@@ -5,7 +5,7 @@ import sys
 
 from sklearn.pipeline import Pipeline
 
-from .subtitle_parsers import SrtParser, SrtOffseter
+from .subtitle_parser import SrtParser, SrtOffseter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

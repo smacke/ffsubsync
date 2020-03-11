@@ -8,7 +8,8 @@ import numpy as np
 from sklearn.pipeline import make_pipeline
 
 from subsync.speech_transformers import SubtitleSpeechTransformer
-from subsync.subtitle_parsers import GenericSubtitleParser, SubtitleOffseter
+from subsync.subtitle_parser import GenericSubtitleParser
+from subsync.subtitle_transformers import SubtitleShifter
 
 fake_srt = b"""1
 00:00:00,178 --> 00:00:01,1416
@@ -51,7 +52,7 @@ def test_max_seconds(max_seconds):
 @pytest.mark.parametrize('encoding', ['utf-8', 'ascii', 'latin-1'])
 def test_same_encoding(encoding):
     parser = GenericSubtitleParser(encoding=encoding)
-    offseter = SubtitleOffseter(1)
+    offseter = SubtitleShifter(1)
     pipe = make_pipeline(parser, offseter)
     pipe.fit(BytesIO(fake_srt))
     assert parser.subs_.encoding == encoding
@@ -63,7 +64,7 @@ def test_same_encoding(encoding):
 @pytest.mark.parametrize('offset', [1, 1.5, -2.3])
 def test_offset(offset):
     parser = GenericSubtitleParser()
-    offseter = SubtitleOffseter(offset)
+    offseter = SubtitleShifter(offset)
     pipe = make_pipeline(parser, offseter)
     pipe.fit(BytesIO(fake_srt))
     for sub_orig, sub_offset in zip(parser.subs_, offseter.subs_):

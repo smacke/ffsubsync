@@ -15,7 +15,7 @@ except ImportError:  # pyyaml does not work with py3.4
 
 from subsync import subsync
 from subsync.speech_transformers import SubtitleSpeechTransformer
-from subsync.subtitle_parsers import GenericSubtitleParser
+from subsync.subtitle_parser import GenericSubtitleParser
 
 INTEGRATION = 'INTEGRATION'
 SYNC_TESTS = 'sync_tests'

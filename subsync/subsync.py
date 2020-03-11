@@ -14,7 +14,8 @@ from .speech_transformers import (
         VideoSpeechTransformer,
         DeserializeSpeechTransformer
 )
-from .subtitle_parsers import GenericSubtitleParser, SubtitleOffseter, SubtitleScaler
+from .subtitle_parser import GenericSubtitleParser
+from .subtitle_transformers import SubtitleScaler, SubtitleShifter
 from .version import __version__
 
 logging.basicConfig(level=logging.INFO)
@@ -153,7 +154,7 @@ def run(args):
     scale_step = best_srt_pipe.named_steps['scale']
     logger.info('offset seconds: %.3f', offset_seconds)
     logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
-    offseter = SubtitleOffseter(offset_seconds).fit_transform(scale_step.subs_)
+    offseter = SubtitleShifter(offset_seconds).fit_transform(scale_step.subs_)
     if args.output_encoding != 'same':
         offseter = offseter.set_encoding(args.output_encoding)
     offseter.write_file(args.srtout)
@@ -204,7 +205,7 @@ def make_parser():
 def main():
     parser = make_parser()
     args = parser.parse_args()
-    run(args)
+    return run(args)
 
 
 if __name__ == "__main__":
