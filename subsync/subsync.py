@@ -92,12 +92,10 @@ def run(args):
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = make_srt_speech_pipeline(
+            fmt=ref_format,
             **override(
                 args,
-                parser=make_srt_parser(
-                    ref_format,
-                    **override(args, encoding=args.reference_encoding or 'infer')
-                )
+                encoding=args.reference_encoding or DEFAULT_ENCODING
             )
         )
     elif ref_format in ('npy', 'npz'):
