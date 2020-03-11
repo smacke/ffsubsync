@@ -165,16 +165,17 @@ class GenericSubtitleParser(_SubsMixin, TransformerMixin):
     def __init__(self, fmt='srt', encoding='infer', max_subtitle_seconds=None, start_seconds=0):
         super(self.__class__, self).__init__()
         self.format = fmt
-        self.encoding_to_use = encoding
+        self.encoding = encoding
+        self.detected_encoding_ = None
         self.sub_skippers = []
         self.max_subtitle_seconds = max_subtitle_seconds
         self.start_seconds = start_seconds
 
     def fit(self, fname, *_):
-        encodings_to_try = (self.encoding_to_use,)
+        encodings_to_try = (self.encoding,)
         with open_file(fname, 'rb') as f:
             subs = f.read()
-        if self.encoding_to_use == 'infer':
+        if self.encoding == 'infer':
             encodings_to_try = (cchardet.detect(subs)['encoding'],)
         exc = None
         for encoding in encodings_to_try:
@@ -193,6 +194,8 @@ class GenericSubtitleParser(_SubsMixin, TransformerMixin):
                     format=format,
                     encoding=encoding
                 )
+                self.detected_encoding_ = encoding
+                logger.info('Detected encoding: %s' % self.detected_encoding_)
                 return self
             except Exception as e:
                 exc = e

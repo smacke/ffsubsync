@@ -70,7 +70,7 @@ def make_srt_speech_pipeline(
             max_subtitle_seconds=max_subtitle_seconds,
             start_seconds=start_seconds
         )
-    assert parser.encoding_to_use == encoding
+    assert parser.encoding == encoding
     assert parser.max_subtitle_seconds == max_subtitle_seconds
     assert parser.start_seconds == start_seconds
     return Pipeline([
