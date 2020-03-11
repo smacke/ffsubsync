@@ -43,6 +43,7 @@ def override(args, **kwargs):
 def make_srt_parser(
         fmt,
         encoding=DEFAULT_ENCODING,
+        caching=False,
         max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
         start_seconds=DEFAULT_START_SECONDS,
         **kwargs
@@ -50,6 +51,7 @@ def make_srt_parser(
     return GenericSubtitleParser(
         fmt=fmt,
         encoding=encoding,
+        caching=caching,
         max_subtitle_seconds=max_subtitle_seconds,
         start_seconds=start_seconds
     )
@@ -58,6 +60,7 @@ def make_srt_parser(
 def make_srt_speech_pipeline(
         fmt='srt',
         encoding=DEFAULT_ENCODING,
+        caching=False,
         max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
         start_seconds=DEFAULT_START_SECONDS,
         scale_factor=DEFAULT_SCALE_FACTOR,
@@ -68,6 +71,7 @@ def make_srt_speech_pipeline(
         parser = make_srt_parser(
             fmt,
             encoding=encoding,
+            caching=caching,
             max_subtitle_seconds=max_subtitle_seconds,
             start_seconds=start_seconds
         )
@@ -133,7 +137,7 @@ def run(args):
         if args.srtin is None:
             logger.info('unsynchronized subtitle file not specified; skipping synchronization')
             return 0
-    parser = make_srt_parser(fmt=args.srtin[-3:], **args.__dict__)
+    parser = make_srt_parser(fmt=args.srtin[-3:], caching=True, **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
         make_srt_speech_pipeline(

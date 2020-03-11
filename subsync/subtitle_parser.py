@@ -43,16 +43,20 @@ def _preprocess_subs(subs, max_subtitle_seconds=None, start_seconds=0, tolerant=
 
 
 class GenericSubtitleParser(SubsMixin, TransformerMixin):
-    def __init__(self, fmt='srt', encoding='infer', max_subtitle_seconds=None, start_seconds=0):
+    def __init__(self, fmt='srt', encoding='infer', caching=False, max_subtitle_seconds=None, start_seconds=0):
         super(self.__class__, self).__init__()
         self.format = fmt
         self.encoding = encoding
+        self.caching = caching
+        self.fit_fname = None
         self.detected_encoding_ = None
         self.sub_skippers = []
         self.max_subtitle_seconds = max_subtitle_seconds
         self.start_seconds = start_seconds
 
     def fit(self, fname, *_):
+        if self.caching and self.fit_fname == fname:
+            return self
         encodings_to_try = (self.encoding,)
         with open_file(fname, 'rb') as f:
             subs = f.read()
@@ -75,6 +79,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                     format=format,
                     encoding=encoding
                 )
+                self.fit_fname = fname
                 self.detected_encoding_ = encoding
                 logger.info('Detected encoding: %s' % self.detected_encoding_)
                 return self
