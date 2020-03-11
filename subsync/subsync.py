@@ -183,9 +183,9 @@ def make_parser():
                              '(default=%d seconds).' % DEFAULT_MAX_OFFSET_SECONDS)
     parser.add_argument('--frame-rate', type=int, default=DEFAULT_FRAME_RATE,
                         help='Frame rate for audio extraction (default=%d).' % DEFAULT_FRAME_RATE)
-    parser.add_argument('--output-encoding', default='same',
+    parser.add_argument('--output-encoding', default='utf-8',
                         help='What encoding to use for writing output subtitles '
-                             '(default=same as for input).')
+                             '(default=utf-8). Can indicate "same" to use same encoding as in input.')
     parser.add_argument('--reference-encoding',
                         help='What encoding to use for reading / writing reference subtitles '
                              '(if applicable, default=infer).')
