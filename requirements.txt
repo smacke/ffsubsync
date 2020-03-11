@@ -1,4 +1,5 @@
 argparse
+cchardet
 ffmpeg-python
 future
 numpy>=1.12.0

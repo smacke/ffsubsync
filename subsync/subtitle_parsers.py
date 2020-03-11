@@ -7,8 +7,9 @@ import re
 import six
 import sys
 
-from sklearn.base import TransformerMixin
+import cchardet
 import pysubs2
+from sklearn.base import TransformerMixin
 import srt
 
 from .file_utils import open_file
@@ -171,16 +172,14 @@ class GenericSubtitleParser(_SubsMixin, TransformerMixin):
 
     def fit(self, fname, *_):
         encodings_to_try = (self.encoding_to_use,)
-        errors = 'replace'
-        if self.encoding_to_use == 'infer':
-            encodings_to_try = ('utf-8', 'utf-8-sig', 'BIG5', 'chinese', 'gb18030', 'latin-1', 'utf-16')
-            errors = 'strict'
         with open_file(fname, 'rb') as f:
             subs = f.read()
+        if self.encoding_to_use == 'infer':
+            encodings_to_try = (cchardet.detect(subs)['encoding'],)
         exc = None
         for encoding in encodings_to_try:
             try:
-                decoded_subs = subs.decode(encoding, errors=errors).strip()
+                decoded_subs = subs.decode(encoding, errors='replace').strip()
                 if self.format == 'srt':
                     parsed_subs = srt.parse(decoded_subs)
                 elif self.format in ('ass', 'ssa'):
