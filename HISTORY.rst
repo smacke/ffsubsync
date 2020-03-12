@@ -78,16 +78,25 @@ History
 
 0.2.14 (2019-10-07)
 ------------------
-* Bump min required scikit-learn to 0.20.4.
+* Bump min required scikit-learn to 0.20.4;
 
 0.2.15 (2019-10-11)
 ------------------
-* Revert changes from 0.2.12 (caused regression on Windows).
+* Revert changes from 0.2.12 (caused regression on Windows);
 
 0.2.16 (2019-12-04)
 ------------------
-* Revert changes from 0.2.9 now that srt parses weird timestamps robustly.
+* Revert changes from 0.2.9 now that srt parses weird timestamps robustly;
 
 0.2.17 (2019-12-21)
 ------------------
-* Try to correct for framerate differences by picking best framerate ratio.
+* Try to correct for framerate differences by picking best framerate ratio;
+
+0.3.0 (2020-03-11)
+------------------
+* Better detection of text file encodings;
+* ASS / SSA functionality (but currently untested);
+* Allow serialize speech with --serialize-speech flag;
+* Convenient --make-test-case flag to create test cases when filing sync-related bugs;
+* Use utf-8 as default output encoding (instead of using same encoding as input);
+* More robust test framework (integration tests!);
