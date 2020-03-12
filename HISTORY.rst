@@ -100,3 +100,7 @@ History
 * Convenient --make-test-case flag to create test cases when filing sync-related bugs;
 * Use utf-8 as default output encoding (instead of using same encoding as input);
 * More robust test framework (integration tests!);
+
+0.3.0 (2020-03-12)
+------------------
+* Fix bug when handling ass/ssa input, this format should work now;
