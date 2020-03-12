@@ -62,14 +62,14 @@ class GenericSubtitle(object):
 
 class GenericSubtitlesFile(object):
     def __init__(self, subs, *args, **kwargs):
-        format = kwargs.pop('format', None)
-        if format is None:
+        sub_format = kwargs.pop('sub_format', None)
+        if sub_format is None:
             raise ValueError('format must be specified')
         encoding = kwargs.pop('encoding', None)
         if encoding is None:
             raise ValueError('encoding must be specified')
         self.subs_ = subs
-        self._format = format
+        self._sub_format = sub_format
         self._encoding = encoding
 
     def set_encoding(self, encoding):
@@ -84,8 +84,8 @@ class GenericSubtitlesFile(object):
         return self.subs_[item]
 
     @property
-    def format(self):
-        return self._format
+    def sub_format(self):
+        return self._sub_format
 
     @property
     def encoding(self):
@@ -103,20 +103,20 @@ class GenericSubtitlesFile(object):
             )
         return GenericSubtitlesFile(
             offset_subs,
-            format=self.format,
+            sub_format=self.sub_format,
             encoding=self.encoding
         )
 
     def write_file(self, fname):
         subs = list(self.gen_raw_resolved_subs())
-        if self.format == 'srt':
+        if self.sub_format == 'srt':
             to_write = srt.compose(subs)
-        elif self.format in ('ssa', 'ass'):
+        elif self.sub_format in ('ssa', 'ass'):
             ssaf = pysubs2.SSAFile()
             ssaf.events = subs
-            to_write = ssaf.to_string(self.format)
+            to_write = ssaf.to_string(self.sub_format)
         else:
-            raise NotImplementedError('unsupported format: %s' % self.format)
+            raise NotImplementedError('unsupported format: %s' % self.sub_format)
 
         to_write = to_write.encode(self.encoding)
         if six.PY3:
