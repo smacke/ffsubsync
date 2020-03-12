@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+from datetime import datetime
 import logging
 import os
+import shutil
 import sys
+import tarfile
 
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -92,6 +95,10 @@ def make_srt_speech_pipeline(
 def run(args):
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
+    if args.make_test_case:
+        if args.srtin is None or args.srtout is None:
+            logger.error("need to specify input and output srt files for test cases")
+            return 1
     ref_format = args.reference[-3:]
     if ref_format in ('srt', 'ssa', 'ass'):
         if args.vad is not None:
@@ -129,7 +136,8 @@ def run(args):
     logger.info("extracting speech segments from reference '%s'...", args.reference)
     reference_pipe.fit(args.reference)
     logger.info('...done')
-    if args.serialize_speech:
+    npy_savename = None
+    if args.serialize_speech or args.make_test_case:
         logger.info('serializing speech...')
         npy_savename = os.path.splitext(args.reference)[0] + '.npz'
         np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
@@ -158,10 +166,30 @@ def run(args):
     scale_step = best_srt_pipe.named_steps['scale']
     logger.info('offset seconds: %.3f', offset_seconds)
     logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
-    offseter = SubtitleShifter(offset_seconds).fit_transform(scale_step.subs_)
+    shifter = SubtitleShifter(offset_seconds).fit_transform(scale_step.subs_)
     if args.output_encoding != 'same':
-        offseter = offseter.set_encoding(args.output_encoding)
-    offseter.write_file(args.srtout)
+        shifter = shifter.set_encoding(args.output_encoding)
+    shifter.write_file(args.srtout)
+    if args.make_test_case:
+        if npy_savename is None:
+            raise ValueError('need non-null npy_savename')
+        tar_dir = '{}.{}'.format(
+            args.reference,
+            datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+        )
+        logger.info('creating test archive {}.tar.gz...'.format(tar_dir))
+        os.mkdir(tar_dir)
+        try:
+            shutil.copy(args.srtin, tar_dir)
+            shutil.move(args.srtout, tar_dir)
+            if args.serialize_speech or args.reference == npy_savename:
+                shutil.copy(npy_savename, tar_dir)
+            else:
+                shutil.move(npy_savename, tar_dir)
+            shutil.make_archive(tar_dir, 'gztar')
+            logger.info('...done')
+        finally:
+            shutil.rmtree(tar_dir)
     return 0
 
 
@@ -200,6 +228,10 @@ def make_parser():
     parser.add_argument('--no-fix-framerate', action='store_true',
                         help='If specified, subsync will not attempt to correct a framerate '
                              'mismatch between reference and subtitles.')
+    parser.add_argument('--make-test-case', action='store_true',
+                        help='If specified, serialize reference speech to a numpy array, '
+                             'and create an archive with input/output subtitles and serialized speech.')
+    parser.add_argument('--create-test-case', action='store_true', help='Same as --make-test-case')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
@@ -209,6 +241,7 @@ def make_parser():
 def main():
     parser = make_parser()
     args = parser.parse_args()
+    args.make_test_case = args.make_test_case or args.create_test_case
     return run(args)
 
 

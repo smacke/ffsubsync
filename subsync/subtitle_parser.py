@@ -81,7 +81,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                 )
                 self.fit_fname = fname
                 self.detected_encoding_ = encoding
-                logger.info('Detected encoding: %s' % self.detected_encoding_)
+                logger.info('detected encoding: %s' % self.detected_encoding_)
                 return self
             except Exception as e:
                 exc = e
