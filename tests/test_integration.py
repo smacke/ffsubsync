@@ -25,9 +25,10 @@ UNSYNCED = 'unsynchronized'
 SKIP = 'skip'
 FILECMP = 'filecmp'
 SHOULD_DETECT_ENCODING = 'should_detect_encoding'
+EXTRA_ARGS = 'extra_args'
 
 
-def gen_args():
+def gen_synctest_configs():
     def test_path(fname):
         return os.path.join('test-data', fname)
     if INTEGRATION not in os.environ or os.environ[INTEGRATION] == 0:
@@ -38,15 +39,19 @@ def gen_args():
     for test in config[SYNC_TESTS]:
         if SKIP in test and test[SKIP]:
             continue
-        args = parser.parse_args([test_path(test[REF]), '-i', test_path(test[UNSYNCED])])
-        args.truth = test_path(test[SYNCED])
-        args.filecmp = True
+        unparsed_args = [test_path(test[REF]), '-i', test_path(test[UNSYNCED])]
+        if EXTRA_ARGS in test:
+            for extra_key, extra_value in test[EXTRA_ARGS].items():
+                unparsed_args.extend(['--{}'.format(extra_key), str(extra_value)])
+        args = parser.parse_args(unparsed_args)
+        truth = test_path(test[SYNCED])
+        should_filecmp = True
         if FILECMP in test:
-            args.filecmp = test[FILECMP]
-        args.should_detect_encoding = None
+            should_filecmp = test[FILECMP]
+        should_detect_encoding = None
         if SHOULD_DETECT_ENCODING in test:
-            args.should_detect_encoding = test[SHOULD_DETECT_ENCODING]
-        yield args
+            should_detect_encoding = test[SHOULD_DETECT_ENCODING]
+        yield args, truth, should_filecmp, should_detect_encoding
 
 
 def timestamps_roughly_match(f1, f2):
@@ -65,18 +70,18 @@ def detected_encoding(fname):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize('args', gen_args())
-def test_sync_matches_ground_truth(args):
+@pytest.mark.parametrize('args,truth,should_filecmp,should_detect_encoding', gen_synctest_configs())
+def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_encoding):
     # context manager TemporaryDirectory not available on py2
     dirpath = tempfile.mkdtemp()
     try:
         args.srtout = os.path.join(dirpath, 'test.srt')
         assert subsync.run(args) == 0
-        if args.filecmp:
-            assert filecmp.cmp(args.srtout, args.truth, shallow=False)
+        if should_filecmp:
+            assert filecmp.cmp(args.srtout, truth, shallow=False)
         else:
-            assert timestamps_roughly_match(args.srtout, args.truth)
-        if args.should_detect_encoding is not None:
-            assert detected_encoding(args.srtin) == args.should_detect_encoding
+            assert timestamps_roughly_match(args.srtout, truth)
+        if should_detect_encoding is not None:
+            assert detected_encoding(args.srtin) == should_detect_encoding
     finally:
         shutil.rmtree(dirpath)
