@@ -18,7 +18,7 @@ from .speech_transformers import (
         DeserializeSpeechTransformer
 )
 from .subtitle_parser import GenericSubtitleParser
-from .subtitle_transformers import SubtitleScaler, SubtitleShifter
+from .subtitle_transformers import SubtitleMerger, SubtitleScaler, SubtitleShifter
 from .version import __version__
 
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +35,8 @@ DEFAULT_START_SECONDS = 0
 DEFAULT_SCALE_FACTOR = 1
 DEFAULT_VAD = 'webrtc'
 DEFAULT_MAX_OFFSET_SECONDS = 600
+
+SUBTITLE_EXTENSIONS = ('srt', 'ass', 'ssa')
 
 
 def override(args, **kwargs):
@@ -97,10 +99,14 @@ def run(args):
         logger.setLevel(logging.CRITICAL)
     if args.make_test_case:
         if args.srtin is None or args.srtout is None:
-            logger.error("need to specify input and output srt files for test cases")
+            logger.error('need to specify input and output srt files for test cases')
             return 1
     ref_format = args.reference[-3:]
-    if ref_format in ('srt', 'ssa', 'ass'):
+    if args.merge_with_reference and ref_format not in SUBTITLE_EXTENSIONS:
+        logger.error('merging synced output with reference only valid '
+                     'when reference composed of subtitles')
+        return 1
+    if ref_format in SUBTITLE_EXTENSIONS:
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = make_srt_speech_pipeline(
@@ -166,10 +172,17 @@ def run(args):
     scale_step = best_srt_pipe.named_steps['scale']
     logger.info('offset seconds: %.3f', offset_seconds)
     logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
-    shifter = SubtitleShifter(offset_seconds).fit_transform(scale_step.subs_)
+    output_steps = [('shift', SubtitleShifter(offset_seconds))]
+    if args.merge_with_reference:
+        output_steps.append(
+            ('merge',
+             SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
+        )
+    output_pipe = Pipeline(output_steps)
+    out_subs = output_pipe.fit_transform(scale_step.subs_)
     if args.output_encoding != 'same':
-        shifter = shifter.set_encoding(args.output_encoding)
-    shifter.write_file(args.srtout)
+        out_subs = out_subs.set_encoding(args.output_encoding)
+    out_subs.write_file(args.srtout)
     if args.make_test_case:
         if npy_savename is None:
             raise ValueError('need non-null npy_savename')
@@ -202,6 +215,8 @@ def make_parser():
                              'to which to synchronize input subtitles.')
     parser.add_argument('-i', '--srtin', help='Input subtitles file (default=stdin).')
     parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
+    parser.add_argument('--merge-with-reference', '--merge', action='store_true',
+                        help='Merge reference subtitles with synced output subtitles.')
     parser.add_argument('--encoding', default=DEFAULT_ENCODING,
                         help='What encoding to use for reading input subtitles '
                              '(default=%s).' % DEFAULT_ENCODING)

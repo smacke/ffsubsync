@@ -46,6 +46,19 @@ class GenericSubtitle(object):
             raise NotImplementedError('unsupported subtitle type: %s' % type(self.inner))
         return ret
 
+    def merge_with(self, other):
+        assert isinstance(self.inner, type(other.inner))
+        inner_merged = copy.deepcopy(self.inner)
+        if isinstance(self.inner, srt.Subtitle):
+            inner_merged.content = "{}\r\n{}".format(inner_merged.content, other.inner.content)
+            return self.__class__(
+                self.start,
+                self.end,
+                inner_merged
+            )
+        else:
+            raise NotImplementedError('unsupported subtitle type: %s' % type(self.inner))
+
     @classmethod
     def wrap_inner_subtitle(cls, sub):
         if isinstance(sub, srt.Subtitle):
