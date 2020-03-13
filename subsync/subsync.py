@@ -228,10 +228,9 @@ def make_parser():
     parser.add_argument('--no-fix-framerate', action='store_true',
                         help='If specified, subsync will not attempt to correct a framerate '
                              'mismatch between reference and subtitles.')
-    parser.add_argument('--make-test-case', action='store_true',
+    parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
                         help='If specified, serialize reference speech to a numpy array, '
                              'and create an archive with input/output subtitles and serialized speech.')
-    parser.add_argument('--create-test-case', action='store_true', help='Same as --make-test-case')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
@@ -241,7 +240,6 @@ def make_parser():
 def main():
     parser = make_parser()
     args = parser.parse_args()
-    args.make_test_case = args.make_test_case or args.create_test_case
     return run(args)
 
 
