@@ -50,7 +50,7 @@ class GenericSubtitle(object):
         assert isinstance(self.inner, type(other.inner))
         inner_merged = copy.deepcopy(self.inner)
         if isinstance(self.inner, srt.Subtitle):
-            inner_merged.content = "{}\n{}".format(inner_merged.content, other.inner.content)
+            inner_merged.content = u'{}\n{}'.format(inner_merged.content, other.inner.content)
             return self.__class__(
                 self.start,
                 self.end,
