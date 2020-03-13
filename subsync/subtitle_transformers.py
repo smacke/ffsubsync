@@ -85,7 +85,7 @@ class SubtitleMerger(SubsMixin, TransformerMixin):
                     ita, itb = itb, ita
                 prev_a = cur_a
                 while prev_a is not None and cur_a.start < cur_b.start:
-                    cur_a = next(cur_a, None)
+                    cur_a = next(ita, None)
                     if cur_a is None or cur_a.start < cur_b.start:
                         yield prev_a
                         prev_a = cur_a

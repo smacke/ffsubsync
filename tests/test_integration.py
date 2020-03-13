@@ -26,6 +26,7 @@ SKIP = 'skip'
 FILECMP = 'filecmp'
 SHOULD_DETECT_ENCODING = 'should_detect_encoding'
 EXTRA_ARGS = 'extra_args'
+EXTRA_NO_VALUE_ARGS = 'extra_no_value_args'
 
 
 def gen_synctest_configs():
@@ -43,6 +44,9 @@ def gen_synctest_configs():
         if EXTRA_ARGS in test:
             for extra_key, extra_value in test[EXTRA_ARGS].items():
                 unparsed_args.extend(['--{}'.format(extra_key), str(extra_value)])
+        if EXTRA_NO_VALUE_ARGS in test:
+            for extra_key in test[EXTRA_NO_VALUE_ARGS]:
+                unparsed_args.append('--{}'.format(extra_key))
         args = parser.parse_args(unparsed_args)
         truth = test_path(test[SYNCED])
         should_filecmp = True
