@@ -46,7 +46,7 @@ jobs:
     - name: Run unit tests with pytest
       run: |
         pytest -v -m 'not integration' tests/
-    - name: Run integration tests with pytest
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        INTEGRATION=1 pytest -v -m 'integration' tests/
+#    - name: Run integration tests with pytest
+#      if: matrix.os == 'ubuntu-latest'
+#      run: |
+#        INTEGRATION=1 pytest -v -m 'integration' tests/
