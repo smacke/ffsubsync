@@ -2,7 +2,8 @@ subsync
 =======
 
 [![](https://github.com/smacke/subsync/workflows/CI/badge.svg)](https://github.com/smacke/subsync/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-maroon.svg)](https://opensource.org/licenses/MIT)
+![](https://img.shields.io/pypi/pyversions/subsume.svg)
 
 Language-agnostic automatic synchronization of subtitles with video, so that
 subtitles are aligned to the correct starting point within the video.
