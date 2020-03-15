@@ -1,3 +1,0 @@
-[submodule "test-data"]
-	path = test-data
-	url = git@github.com:smacke/subsync-data
