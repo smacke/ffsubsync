@@ -199,7 +199,7 @@ def run(args):
                 shutil.copy(npy_savename, tar_dir)
             else:
                 shutil.move(npy_savename, tar_dir)
-            shutil.make_archive(tar_dir, 'gztar')
+            shutil.make_archive(tar_dir, 'gztar', os.curdir, tar_dir)
             logger.info('...done')
         finally:
             shutil.rmtree(tar_dir)

@@ -108,3 +108,7 @@ History
 0.3.2 (2020-03-13)
 ------------------
 * Add ability to merge synced and reference subs into bilingual subs when reference is srt;
+
+0.3.3 (2020-03-15)
+------------------
+* Hotfix for test archive creation bug;
