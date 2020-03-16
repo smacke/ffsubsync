@@ -95,6 +95,7 @@ def make_srt_speech_pipeline(
 
 
 def run(args):
+    retval = 0
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
     if args.make_test_case:
@@ -150,7 +151,7 @@ def run(args):
         logger.info('...done')
         if args.srtin is None:
             logger.info('unsynchronized subtitle file not specified; skipping synchronization')
-            return 0
+            return retval
     parser = make_srt_parser(fmt=args.srtin[-3:], caching=True, **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
@@ -199,11 +200,20 @@ def run(args):
                 shutil.copy(npy_savename, tar_dir)
             else:
                 shutil.move(npy_savename, tar_dir)
-            shutil.make_archive(tar_dir, 'gztar', os.curdir, tar_dir)
+            supported_formats = set(list(zip(*shutil.get_archive_formats()))[0])
+            preferred_formats = ['gztar', 'bztar', 'xztar', 'zip', 'tar']
+            for archive_format in preferred_formats:
+                if archive_format in supported_formats:
+                    shutil.make_archive(tar_dir, 'gztar', os.curdir, tar_dir)
+                    break
+            else:
+                logger.error('failed to create test archive; no formats supported '
+                             '(this should not happen)')
+                retval = 1
             logger.info('...done')
         finally:
             shutil.rmtree(tar_dir)
-    return 0
+    return retval
 
 
 def make_parser():
