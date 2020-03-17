@@ -1,4 +1,4 @@
-subsync
+FFsubs
 =======
 
 [![](https://github.com/smacke/subsync/workflows/CI/badge.svg)](https://github.com/smacke/subsync/actions)
