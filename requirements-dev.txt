@@ -2,8 +2,3 @@
 flake8
 pytest
 pyyaml;python_version!="3.4"
-
-# docs
-autodoc
-sphinx-argparse
-sphinx-rtd-theme
