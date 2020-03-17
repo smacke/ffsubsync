@@ -1,16 +1,19 @@
-subsync
+FFsubsync
 =======
 
-[![](https://github.com/smacke/subsync/workflows/CI/badge.svg)](https://github.com/smacke/subsync/actions)
+[![CI Status](https://github.com/smacke/ffsubsync/workflows/master/badge.svg)](https://github.com/smacke/ffsubsync/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-maroon.svg)](https://opensource.org/licenses/MIT)
-![](https://img.shields.io/pypi/pyversions/subsume.svg)
+[![Python Versions](https://img.shields.io/pypi/pyversions/ffsubsync.svg)](https://pypi.org/project/ffsubsync)
+[![Documentation Status](https://readthedocs.org/projects/ffsubsync/badge/?version=latest)](https://ffsubsync.readthedocs.io/en/latest/?badge=latest)
+[![PyPI Version](https://img.shields.io/pypi/v/ffsubsync.svg)](https://img.shields.io/pypi/v/ffsubsync.svg)
+
 
 Language-agnostic automatic synchronization of subtitles with video, so that
 subtitles are aligned to the correct starting point within the video.
 
 Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
-![](tearing-me-apart-wrong.gif)  |  ![](tearing-me-apart-correct.gif)
+![](https://raw.githubusercontent.com/smacke/ffsubsync/master/tearing-me-apart-wrong.gif)  |  ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/tearing-me-apart-correct.gif)
 
 Install
 -------
@@ -20,23 +23,24 @@ brew install ffmpeg
 ~~~
 Next, grab the script. It should work with both Python 2 and Python 3:
 ~~~
-pip install git+https://github.com/smacke/subsync@stable
+pip install ffsubsync
 ~~~
 If you want to live dangerously, you can grab the latest version as follows:
 ~~~
-pip install git+https://github.com/smacke/subsync@latest
+pip install git+https://github.com/smacke/ffsubsync@latest
 ~~~
 
 Usage
 -----
+Both `subsync` and `ffsubsync` work as entrypoints:
 ~~~
-subsync video.mp4 -i unsynchronized.srt > synchronized.srt
+ffsubsync video.mp4 -i unsynchronized.srt > synchronized.srt
 ~~~
 
 or
 
 ~~~
-subsync video.mp4 -i unsynchronized.srt -o synchronized.srt
+ffsubsync video.mp4 -i unsynchronized.srt -o synchronized.srt
 ~~~
 
 There may be occasions where you have a correctly synchronized srt file in a
@@ -46,18 +50,18 @@ directly as a reference for synchronization, instead of using the video as the
 reference:
 
 ~~~
-subsync reference.srt -i unsynchronized.srt -o synchronized.srt
+ffsubsync reference.srt -i unsynchronized.srt -o synchronized.srt
 ~~~
 
-`subsync` uses the file extension to decide whether to perform voice activity
+`ffsubsync` uses the file extension to decide whether to perform voice activity
 detection on the audio or to directly extract speech from an srt file.
 
 Speed
 -----
-`subsync` usually finishes in 20 to 30 seconds, depending on the length of the
+`ffsubsync` usually finishes in 20 to 30 seconds, depending on the length of the
 video. The most expensive step is actually extraction of raw audio. If you
 already have a correctly synchronized "reference" srt file (in which case audio
-extraction can be skipped), `subsync` typically runs in less than a second.
+extraction can be skipped), `ffsubsync` typically runs in less than a second.
 
 How It Works
 ------------
@@ -86,51 +90,17 @@ Limitations
 In most cases, inconsistencies between video and subtitles occur when starting
 or ending segments present in video are not present in subtitles, or vice versa.
 This can occur, for example, when a TV episode recap in the subtitles was pruned
-from video. Subsync typically works well in these cases, and in my experience
+from video. FFsubsync typically works well in these cases, and in my experience
 this covers >95% of use cases. Handling breaks and splits outside of the beginning
 and ending segments is left to future work (see below).
 
-VLC Integration
----------------
-To demonstrate how one might use `subsync` seamlessly with real video software,
-we developed a prototype integration into the popular
-[VLC](https://www.videolan.org/vlc/index.html) media player, which was demoed
-during the HackIllinois 2019 project expo. The resulting patch can be found in
-the file
-[subsync-vlc.patch](https://github.com/smacke/subsync/raw/master/subsync-vlc.patch).
-Here are instructions for how to use it.
-
-1. First clone the 3.0 maintenance branch of VLC and checkout 3.0.6:
-~~~
-git clone git://git.videolan.org/vlc/vlc-3.0.git
-cd vlc-3.0
-git checkout 3.0.6
-~~~
-2. Next, apply the patch:
-~~~
-wget https://github.com/smacke/subsync/raw/master/subsync-vlc.patch
-git apply subsync-vlc.patch
-~~~
-3. Follow the normal instructions on the
-[VideoLAN wiki](https://wiki.videolan.org/VLC_Developers_Corner/)
-for building VLC from source. *Warning: this is not easy.*
-
-You should now be able to autosynchronize subtitles using the hotkey `Ctrl+Shift+S`
-(only enabled while subtitles are present).
-
 Future Work
 -----------
-1. I am currently working to extend the synchronization algorithm to handle
-   splits / breaks in the middle of video not present in subtitles (or vice
-   versa). It will take some time before I have a robust solution (assuming one
-   is possible). See [#10](https://github.com/smacke/subsync/issues/10) for
-   more details.
-
-2. The prototype VLC patch is very experimental -- it was developed under
-   pressure and just barely works. I would love to see this project more
-   robustly integrated with VLC, either directly in the VLC core, or as a
-   plugin.  If you or anyone you know has ideas for how to accomplish this,
-   please let me know!
+Besides general stability and usability improvements, one line
+of work aims to extend the synchronization algorithm to handle splits
+/ breaks in the middle of video not present in subtitles (or vice versa).
+Developing a robust solution will take some time (assuming one is possible).
+See [#10](https://github.com/smacke/ffsubsync/issues/10) for more details.
 
 History
 -------

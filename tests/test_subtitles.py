@@ -7,9 +7,9 @@ import pytest
 import numpy as np
 from sklearn.pipeline import make_pipeline
 
-from subsync.speech_transformers import SubtitleSpeechTransformer
-from subsync.subtitle_parser import GenericSubtitleParser
-from subsync.subtitle_transformers import SubtitleShifter
+from ffsubsync.speech_transformers import SubtitleSpeechTransformer
+from ffsubsync.subtitle_parser import GenericSubtitleParser
+from ffsubsync.subtitle_transformers import SubtitleShifter
 
 fake_srt = b"""1
 00:00:00,178 --> 00:00:01,1416

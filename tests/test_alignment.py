@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*- 
 import pytest
-from subsync.aligners import FFTAligner, MaxScoreAligner
+from ffsubsync.aligners import FFTAligner, MaxScoreAligner
 
 
 @pytest.mark.parametrize('s1, s2, true_offset', [
