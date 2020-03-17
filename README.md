@@ -10,7 +10,7 @@ subtitles are aligned to the correct starting point within the video.
 
 Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
-![](tearing-me-apart-wrong.gif)  |  ![](tearing-me-apart-correct.gif)
+![](https://raw.githubusercontent.com/smacke/subsync/master/tearing-me-apart-wrong.gif)  |  ![](https://raw.githubusercontent.com/smacke/subsync/master/tearing-me-apart-correct.gif)
 
 Install
 -------
