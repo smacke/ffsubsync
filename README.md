@@ -1,9 +1,11 @@
 FFsubs
 =======
 
-[![](https://github.com/smacke/subsync/workflows/CI/badge.svg)](https://github.com/smacke/subsync/actions)
+[![CI Status](https://github.com/smacke/subsync/workflows/CI/badge.svg)](https://github.com/smacke/subsync/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-maroon.svg)](https://opensource.org/licenses/MIT)
-![](https://img.shields.io/pypi/pyversions/subsume.svg)
+[![Python Versions](https://img.shields.io/pypi/pyversions/ffsubs.svg)](https://img.shields.io/pypi/pyversions/ffsubs.svg)
+[![Documentation Status](https://readthedocs.org/projects/subsync/badge/?version=latest)](https://subsync.readthedocs.io/en/latest/?badge=latest)
+
 
 Language-agnostic automatic synchronization of subtitles with video, so that
 subtitles are aligned to the correct starting point within the video.
