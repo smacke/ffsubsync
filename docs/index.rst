@@ -1,9 +1,9 @@
-.. subsync documentation master file, created by
+.. ffsubs documentation master file, created by
    sphinx-quickstart on Mon Dec  2 17:06:18 2019.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to subsync's documentation!
+Welcome to FFsubs's documentation!
 ====================================
 
 .. toctree::
@@ -20,6 +20,6 @@ Indices and tables
 * :ref:`search`
 
 .. argparse::
-   :module: subsync.subsync
+   :module: ffsubs.subsync
    :func: make_parser
    :prog: subsync

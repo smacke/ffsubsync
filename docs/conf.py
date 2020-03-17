@@ -17,8 +17,8 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'subsync'
-copyright = '2019, Stephen Macke'
+project = 'ffsubs'
+copyright = '2020, Stephen Macke'
 author = 'Stephen Macke'
 
 

@@ -12,21 +12,23 @@ def read_file(fname):
 
 history = read_file('HISTORY.rst')
 requirements = read_file('requirements.txt').strip().split()
-pkg_name = 'subsync'
+pkg_name = 'ffsubs'
 exec(read_file(os.path.join(pkg_name, 'version.py')))
 setup(
     name=pkg_name,
     version=__version__,  # noqa
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
-    description='Language-agnostic synchronization of subtitles with video via speech detection.',
+    description='Language-agnostic synchronization of subtitles with video via speech detection, '
+                'and other subtitle tools.',
     long_description=read_file('README.md'),
+    long_description_content_type='text/markdown',
     url='https://github.com/smacke/subsync',
     packages=find_packages(exclude=['docs']),
     include_package_data=True,
     install_requires=requirements,
     entry_points={
-        'console_scripts': ['subsync = subsync:main'],
+        'console_scripts': ['subsync = ffsubs:main'],
     },
     license='MIT',
     zip_safe=False,
