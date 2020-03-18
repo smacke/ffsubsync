@@ -6,7 +6,6 @@ import logging
 import os
 import shutil
 import sys
-import tarfile
 
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -243,7 +242,8 @@ def make_parser():
                         help='Frame rate for audio extraction (default=%d).' % DEFAULT_FRAME_RATE)
     parser.add_argument('--output-encoding', default='utf-8',
                         help='What encoding to use for writing output subtitles '
-                             '(default=utf-8). Can indicate "same" to use same encoding as in input.')
+                             '(default=utf-8). Can indicate "same" to use same '
+                             'encoding as that of the input.')
     parser.add_argument('--reference-encoding',
                         help='What encoding to use for reading / writing reference subtitles '
                              '(if applicable, default=infer).')
@@ -255,7 +255,8 @@ def make_parser():
                              'mismatch between reference and subtitles.')
     parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
                         help='If specified, serialize reference speech to a numpy array, '
-                             'and create an archive with input/output subtitles and serialized speech.')
+                             'and create an archive with input/output subtitles '
+                             'and serialized speech.')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
