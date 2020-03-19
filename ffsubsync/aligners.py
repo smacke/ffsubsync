@@ -3,10 +3,14 @@ import logging
 import math
 
 import numpy as np
-from sklearn.base import TransformerMixin
+from .sklearn_shim import TransformerMixin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class FailedToFindAlignmentException(Exception):
+    pass
 
 
 class FFTAligner(TransformerMixin):
@@ -48,6 +52,7 @@ class MaxScoreAligner(TransformerMixin):
             self.base_aligner = base_aligner()
         else:
             self.base_aligner = base_aligner
+        self.max_offset_seconds = max_offset_seconds
         if sample_rate is None or max_offset_seconds is None:
             self.max_offset_samples = None
         else:
@@ -73,6 +78,10 @@ class MaxScoreAligner(TransformerMixin):
     def transform(self, *_):
         scores = self._scores
         if self.max_offset_samples is not None:
-            scores = filter(lambda s: abs(s[0][1]) <= self.max_offset_samples, scores)
+            scores = list(filter(lambda s: abs(s[0][1]) <= self.max_offset_samples, scores))
+        if len(scores) == 0:
+            raise FailedToFindAlignmentException('Synchronization failed; consider passing '
+                                                 '--max-offset-seconds with a number larger than '
+                                                 '{}'.format(self.max_offset_seconds))
         (score, offset), subpipe = max(scores, key=lambda x: x[0][0])
         return offset, subpipe

@@ -7,13 +7,13 @@ import tempfile
 
 import numpy as np
 import pytest
-from sklearn.pipeline import make_pipeline
 try:
     import yaml
 except ImportError:  # pyyaml does not work with py3.4
     pass
 
-from ffsubsync import subsync
+from ffsubsync import ffsubsync
+from ffsubsync.sklearn_shim import make_pipeline
 from ffsubsync.speech_transformers import SubtitleSpeechTransformer
 from ffsubsync.subtitle_parser import GenericSubtitleParser
 
@@ -36,7 +36,7 @@ def gen_synctest_configs():
         return
     with open('test-data/integration-testing-config.yaml', 'r') as f:
         config = yaml.load(f, yaml.SafeLoader)
-    parser = subsync.make_parser()
+    parser = ffsubsync.make_parser()
     for test in config[SYNC_TESTS]:
         if SKIP in test and test[SKIP]:
             continue
@@ -60,7 +60,7 @@ def gen_synctest_configs():
 
 def timestamps_roughly_match(f1, f2):
     parser = GenericSubtitleParser()
-    extractor = SubtitleSpeechTransformer(sample_rate=subsync.DEFAULT_FRAME_RATE)
+    extractor = SubtitleSpeechTransformer(sample_rate=ffsubsync.DEFAULT_FRAME_RATE)
     pipe = make_pipeline(parser, extractor)
     f1_bitstring = pipe.fit_transform(f1).astype(bool)
     f2_bitstring = pipe.fit_transform(f2).astype(bool)
@@ -80,7 +80,7 @@ def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_en
     dirpath = tempfile.mkdtemp()
     try:
         args.srtout = os.path.join(dirpath, 'test.srt')
-        assert subsync.run(args) == 0
+        assert ffsubsync.run(args) == 0
         if should_filecmp:
             assert filecmp.cmp(args.srtout, truth, shallow=False)
         else:

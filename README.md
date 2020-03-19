@@ -13,7 +13,7 @@ subtitles are aligned to the correct starting point within the video.
 
 Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/smacke/ffsubsync/master/tearing-me-apart-wrong.gif)  |  ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/tearing-me-apart-correct.gif)
+![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-wrong.gif)  |  ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-correct.gif)
 
 Install
 -------

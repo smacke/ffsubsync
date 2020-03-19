@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import platform
 from setuptools import setup, find_packages
 
 
@@ -12,6 +13,9 @@ def read_file(fname):
 
 history = read_file('HISTORY.rst')
 requirements = read_file('requirements.txt').strip().split()
+if platform.system() == 'Windows':
+    requirements.remove('webrtcvad')
+    requirements.append('webrtcvad-wheels')
 pkg_name = 'ffsubsync'
 exec(read_file(os.path.join(pkg_name, 'version.py')))
 setup(

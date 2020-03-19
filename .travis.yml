@@ -15,6 +15,7 @@ dist: xenial
 
 git:
   submodules: false
+  lfs_skip_smudge: true
 
 install:
   - pip install -r requirements.txt

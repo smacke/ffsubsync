@@ -4,7 +4,7 @@ import logging
 
 import cchardet
 import pysubs2
-from sklearn.base import TransformerMixin
+from .sklearn_shim import TransformerMixin
 import srt
 
 from .constants import *

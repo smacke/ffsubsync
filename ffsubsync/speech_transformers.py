@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
+from contextlib import contextmanager
 import logging
-from io import BytesIO
+import io
+import os
+import platform
 import subprocess
 import sys
 from datetime import timedelta
 
 import ffmpeg
 import numpy as np
-from sklearn.base import TransformerMixin
-from sklearn.pipeline import Pipeline
+from .sklearn_shim import TransformerMixin
+from .sklearn_shim import Pipeline
 import tqdm
-import webrtcvad
 
 from .constants import *
 from .subtitle_parser import make_subtitle_parser
@@ -18,6 +20,70 @@ from .subtitle_transformers import SubtitleScaler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# ref: https://github.com/pyinstaller/pyinstaller/wiki/Recipe-subprocess
+# Create a set of arguments which make a ``subprocess.Popen`` (and
+# variants) call work with or without Pyinstaller, ``--noconsole`` or
+# not, on Windows and Linux. Typical use::
+#
+#   subprocess.call(['program_to_run', 'arg_1'], **subprocess_args())
+#
+# When calling ``check_output``::
+#
+#   subprocess.check_output(['program_to_run', 'arg_1'],
+#                           **subprocess_args(False))
+def _subprocess_args(include_stdout=True):
+    # The following is true only on Windows.
+    if hasattr(subprocess, 'STARTUPINFO'):
+        # On Windows, subprocess calls will pop up a command window by default
+        # when run from Pyinstaller with the ``--noconsole`` option. Avoid this
+        # distraction.
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        # Windows doesn't search the path by default. Pass it an environment so
+        # it will.
+        env = os.environ
+    else:
+        si = None
+        env = None
+
+    # ``subprocess.check_output`` doesn't allow specifying ``stdout``::
+    #
+    #   Traceback (most recent call last):
+    #     File "test_subprocess.py", line 58, in <module>
+    #       **subprocess_args(stdout=None))
+    #     File "C:\Python27\lib\subprocess.py", line 567, in check_output
+    #       raise ValueError('stdout argument not allowed, it will be overridden.')
+    #   ValueError: stdout argument not allowed, it will be overridden.
+    #
+    # So, add it only if it's needed.
+    if include_stdout:
+        ret = {'stdout': subprocess.PIPE}
+    else:
+        ret = {}
+
+    # On Windows, running this from the binary produced by Pyinstaller
+    # with the ``--noconsole`` option requires redirecting everything
+    # (stdin, stdout, stderr) to avoid an OSError exception
+    # "[Error 6] the handle is invalid."
+    ret.update({'stdin': subprocess.PIPE,
+                'stderr': subprocess.PIPE,
+                'startupinfo': si,
+                'env': env})
+    return ret
+
+
+def _ffmpeg_bin_path(bin_name):
+    if platform.system() == 'Windows':
+        bin_name = '{}.exe'.format(bin_name)
+    try:
+        resource_path = os.environ[SUBSYNC_RESOURCES_ENV_MAGIC]
+        if len(resource_path) > 0:
+            return os.path.join(resource_path, 'ffmpeg-bin', bin_name)
+    except KeyError as e:
+        logger.error("Couldn't find resource path; falling back to searching system path")
+    return bin_name
 
 
 def make_subtitle_speech_pipeline(
@@ -94,6 +160,7 @@ def _make_auditok_detector(sample_rate, frame_rate):
 
 
 def _make_webrtcvad_detector(sample_rate, frame_rate):
+    import webrtcvad
     vad = webrtcvad.Vad()
     vad.set_mode(3)  # set non-speech pruning aggressiveness from 0 to 3
     window_duration = 1. / sample_rate  # duration in seconds
@@ -122,12 +189,13 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
 
 
 class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, vlc_mode=False):
+    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, vlc_mode=False, gui_mode=False):
         self.vad = vad
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
         self.start_seconds = start_seconds
         self.vlc_mode = vlc_mode
+        self.gui_mode = gui_mode
         self.video_speech_results_ = None
 
     def try_fit_using_embedded_subs(self, fname):
@@ -135,7 +203,7 @@ class VideoSpeechTransformer(TransformerMixin):
         embedded_subs_times = []
         # check first 5; should cover 99% of movies
         for stream in range(5):
-            ffmpeg_args = ['ffmpeg']
+            ffmpeg_args = [_ffmpeg_bin_path('ffmpeg')]
             ffmpeg_args.extend([
                 '-loglevel', 'fatal',
                 '-nostdin',
@@ -144,8 +212,8 @@ class VideoSpeechTransformer(TransformerMixin):
                 '-f', 'srt',
                 '-'
             ])
-            process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output = BytesIO(process.communicate()[0])
+            process = subprocess.Popen(ffmpeg_args, **_subprocess_args(include_stdout=True))
+            output = io.BytesIO(process.communicate()[0])
             if process.returncode != 0:
                 break
             pipe = make_subtitle_speech_pipeline(start_seconds=self.start_seconds).fit(output)
@@ -167,7 +235,9 @@ class VideoSpeechTransformer(TransformerMixin):
             except Exception as e:
                 logger.info(e)
         try:
-            total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
+            total_duration = float(ffmpeg.probe(
+                fname, cmd=_ffmpeg_bin_path('ffprobe')
+            )['format']['duration']) - self.start_seconds
         except Exception as e:
             logger.warning(e)
             total_duration = None
@@ -178,7 +248,7 @@ class VideoSpeechTransformer(TransformerMixin):
         else:
             raise ValueError('unknown vad: %s' % self.vad)
         media_bstring = []
-        ffmpeg_args = ['ffmpeg']
+        ffmpeg_args = [_ffmpeg_bin_path('ffmpeg')]
         if self.start_seconds > 0:
             ffmpeg_args.extend([
                 '-ss', str(timedelta(seconds=self.start_seconds)),
@@ -193,24 +263,42 @@ class VideoSpeechTransformer(TransformerMixin):
             '-ar', str(self.frame_rate),
             '-'
         ])
-        process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=None)
+        process = subprocess.Popen(ffmpeg_args, **_subprocess_args(include_stdout=True))
         bytes_per_frame = 2
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate
         windows_per_buffer = 10000
         simple_progress = 0.
-        with tqdm.tqdm(total=total_duration, disable=self.vlc_mode) as pbar:
-            while True:
-                in_bytes = process.stdout.read(frames_per_window * windows_per_buffer)
-                if not in_bytes:
-                    break
-                newstuff = len(in_bytes) / float(bytes_per_frame) / self.frame_rate
-                simple_progress += newstuff
-                pbar.update(newstuff)
-                if self.vlc_mode and total_duration is not None:
-                    print("%d" % int(simple_progress * 100. / total_duration))
-                    sys.stdout.flush()
-                in_bytes = np.frombuffer(in_bytes, np.uint8)
-                media_bstring.append(detector(in_bytes))
+
+        @contextmanager
+        def redirect_stderr(enter_result=None):
+            yield enter_result
+        tqdm_extra_args = {}
+        should_print_redirected_stderr = self.gui_mode
+        if self.gui_mode:
+            try:
+                from contextlib import redirect_stderr
+                tqdm_extra_args['file'] = sys.stdout
+            except ImportError:
+                should_print_redirected_stderr = False
+        pbar_output = io.StringIO()
+        with redirect_stderr(pbar_output):
+            with tqdm.tqdm(total=total_duration, disable=self.vlc_mode, **tqdm_extra_args) as pbar:
+                while True:
+                    in_bytes = process.stdout.read(frames_per_window * windows_per_buffer)
+                    if not in_bytes:
+                        break
+                    newstuff = len(in_bytes) / float(bytes_per_frame) / self.frame_rate
+                    simple_progress += newstuff
+                    pbar.update(newstuff)
+                    if self.vlc_mode and total_duration is not None:
+                        print("%d" % int(simple_progress * 100. / total_duration))
+                        sys.stdout.flush()
+                    if should_print_redirected_stderr:
+                        assert self.gui_mode
+                        # no need to flush since we pass -u to do unbuffered output for gui mode
+                        print(pbar_output.read())
+                    in_bytes = np.frombuffer(in_bytes, np.uint8)
+                    media_bstring.append(detector(in_bytes))
         self.video_speech_results_ = np.concatenate(media_bstring)
         return self
 

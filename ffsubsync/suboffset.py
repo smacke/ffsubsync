@@ -5,7 +5,8 @@ import sys
 
 from sklearn.pipeline import Pipeline
 
-from .subtitle_parser import SrtParser, SrtOffseter
+from .subtitle_parser import GenericSubtitleParser
+from .subtitle_transformers import SubtitleShifter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,8 +15,8 @@ logger = logging.getLogger(__name__)
 def main():
     td = float(sys.argv[3])
     pipe = Pipeline([
-        ('parse', SrtParser()),
-        ('offset', SrtOffseter(td)),
+        ('parse', GenericSubtitleParser()),
+        ('offset', SubtitleShifter(td)),
     ])
     pipe.fit_transform(sys.argv[1])
     pipe.steps[-1][1].write_file(sys.argv[2])
