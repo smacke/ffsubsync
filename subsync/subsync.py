@@ -171,22 +171,29 @@ def add_gui_and_cli_args(parser, mode='cli'):
     else:
         extra_for_files = dict(widget='FileChooser')
     parser.add_argument('reference',
-                        help='Reference (video, srt, or a numpy array with VAD speech) '
+                        help='Reference ' +
+                             (mode == 'cli') * '(video, subtitles, or a numpy array with VAD speech) ' +
+                             (mode == 'gui') * '(video or subtitles file) ' +
                              'to which to synchronize input subtitles.', **extra_for_files)
-    parser.add_argument('-i', '--srtin', 
-                        help='Input subtitles file (default=stdin).', **extra_for_files)
     if mode == 'cli':
-        parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
+        parser.add_argument('-i', '--srtin', help='Input subtitles file (default=stdin).')
     else:
-        parser.add_argument('-o', '--srtout',
-                            help='Output subtitles file (default=${srtin}.synced.srt).',
-                            **extra_for_files)
+        parser.add_argument('srtin', help='Input subtitles file', **extra_for_files)
+    parser.add_argument('-o', '--srtout',
+                        help='Output subtitles file (default={}).'.format(
+                            'stdout' if mode == 'cli' else '${srtin}.synced.srt'
+                        ))
     parser.add_argument('--merge-with-reference', '--merge', action='store_true',
                         help='Merge reference subtitles with synced output subtitles.')
-    parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
-                        help='If specified, serialize reference speech to a numpy array, '
-                             'and create an archive with input/output subtitles '
-                             'and serialized speech.')
+    if mode == 'cli':
+        parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
+                            help='If specified, serialize reference speech to a numpy array, '
+                                 'and create an archive with input/output subtitles '
+                                 'and serialized speech.')
+    else:
+        parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
+                            help='If specified, create a test archive a few KiB in size '
+                                 'to send to the developer as a debugging aid.')
 
 
 def make_parser():
