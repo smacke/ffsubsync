@@ -1,3 +1,5 @@
 flake8
+gooey
+pyinstaller
 pytest
 pyyaml;python_version!="3.4"

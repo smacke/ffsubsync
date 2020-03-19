@@ -26,7 +26,7 @@ setup(
     include_package_data=True,
     install_requires=requirements,
     entry_points={
-        'console_scripts': ['subsync = subsync:main'],
+        'console_scripts': ['subsync = subsync:main']
     },
     license='MIT',
     zip_safe=False,

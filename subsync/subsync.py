@@ -31,9 +31,9 @@ def override(args, **kwargs):
     return args_dict
 
 
-def run(args):
+def run(args, mode='cli'):
     retval = 0
-    if args.vlc_mode:
+    if mode == 'cli' and args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
     if args.make_test_case:
         if args.srtin is None or args.srtout is None:
@@ -45,7 +45,7 @@ def run(args):
                      'when reference composed of subtitles')
         return 1
     if ref_format in SUBTITLE_EXTENSIONS:
-        if args.vad is not None:
+        if mode == 'cli' and args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = make_subtitle_speech_pipeline(
             fmt=ref_format,
@@ -55,14 +55,17 @@ def run(args):
             )
         )
     elif ref_format in ('npy', 'npz'):
-        if args.vad is not None:
+        if mode == 'cli' and args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         reference_pipe = Pipeline([
             ('deserialize', DeserializeSpeechTransformer())
         ])
     else:
-        vad = args.vad or DEFAULT_VAD
-        if args.reference_encoding is not None:
+        if mode == 'cli':
+            vad = args.vad or DEFAULT_VAD
+        else:
+            vad = DEFAULT_VAD
+        if mode == 'cli' and args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
         reference_pipe = Pipeline([
             ('speech_extract', VideoSpeechTransformer(vad=vad,
@@ -71,7 +74,7 @@ def run(args):
                                                       start_seconds=args.start_seconds,
                                                       vlc_mode=args.vlc_mode))
         ])
-    if args.no_fix_framerate:
+    if mode == 'cli' and args.no_fix_framerate:
         framerate_ratios = [1.]
     else:
         framerate_ratios = np.concatenate([
@@ -81,7 +84,7 @@ def run(args):
     reference_pipe.fit(args.reference)
     logger.info('...done')
     npy_savename = None
-    if args.serialize_speech or args.make_test_case:
+    if args.make_test_case or (mode == 'cli' and args.serialize_speech):
         logger.info('serializing speech...')
         npy_savename = os.path.splitext(args.reference)[0] + '.npz'
         np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
@@ -99,8 +102,12 @@ def run(args):
     ]
     logger.info('...done')
     logger.info('computing alignments...')
+    if mode == 'cli':
+        max_offset_seconds = args.max_offset_seconds
+    else:
+        max_offset_seconds = DEFAULT_MAX_OFFSET_SECONDS
     offset_samples, best_srt_pipe = MaxScoreAligner(
-        FFTAligner, SAMPLE_RATE, args.max_offset_seconds
+        FFTAligner, SAMPLE_RATE, max_offset_seconds
     ).fit_transform(
         reference_pipe.transform(args.reference),
         srt_pipes,
@@ -118,9 +125,14 @@ def run(args):
         )
     output_pipe = Pipeline(output_steps)
     out_subs = output_pipe.fit_transform(scale_step.subs_)
-    if args.output_encoding != 'same':
+    if mode == 'cli' and args.output_encoding != 'same':
         out_subs = out_subs.set_encoding(args.output_encoding)
-    out_subs.write_file(args.srtout)
+    if mode == 'cli' or args.srtout is not None:
+        out_subs.write_file(args.srtout)
+    else:
+        outname = '{}.synced.srt'.format(args.srtin[:-4])
+        logger.info('writing output to {}'.format(outname))
+        out_subs.write_file(outname)
     if args.make_test_case:
         if npy_savename is None:
             raise ValueError('need non-null npy_savename')
@@ -133,7 +145,7 @@ def run(args):
         try:
             shutil.copy(args.srtin, tar_dir)
             shutil.move(args.srtout, tar_dir)
-            if args.serialize_speech or args.reference == npy_savename:
+            if (mode == 'cli' and args.serialize_speech) or args.reference == npy_savename:
                 shutil.copy(npy_savename, tar_dir)
             else:
                 shutil.move(npy_savename, tar_dir)
@@ -153,17 +165,35 @@ def run(args):
     return retval
 
 
+def add_gui_and_cli_args(parser, mode='cli'):
+    if mode == 'cli':
+        extra_for_files = {}
+    else:
+        extra_for_files = dict(widget='FileChooser')
+    parser.add_argument('reference',
+                        help='Reference (video, srt, or a numpy array with VAD speech) '
+                             'to which to synchronize input subtitles.', **extra_for_files)
+    parser.add_argument('-i', '--srtin', 
+                        help='Input subtitles file (default=stdin).', **extra_for_files)
+    if mode == 'cli':
+        parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
+    else:
+        parser.add_argument('-o', '--srtout',
+                            help='Output subtitles file (default=${srtin}.synced.srt).',
+                            **extra_for_files)
+    parser.add_argument('--merge-with-reference', '--merge', action='store_true',
+                        help='Merge reference subtitles with synced output subtitles.')
+    parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
+                        help='If specified, serialize reference speech to a numpy array, '
+                             'and create an archive with input/output subtitles '
+                             'and serialized speech.')
+
+
 def make_parser():
     parser = argparse.ArgumentParser(description='Synchronize subtitles with video.')
     parser.add_argument('-v', '--version', action='version',
                         version='%(prog)s {version}'.format(version=__version__))
-    parser.add_argument('reference',
-                        help='Reference (video, srt, or a numpy array with VAD speech) '
-                             'to which to synchronize input subtitles.')
-    parser.add_argument('-i', '--srtin', help='Input subtitles file (default=stdin).')
-    parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
-    parser.add_argument('--merge-with-reference', '--merge', action='store_true',
-                        help='Merge reference subtitles with synced output subtitles.')
+    add_gui_and_cli_args(parser)
     parser.add_argument('--encoding', default=DEFAULT_ENCODING,
                         help='What encoding to use for reading input subtitles '
                              '(default=%s).' % DEFAULT_ENCODING)
@@ -192,10 +222,6 @@ def make_parser():
     parser.add_argument('--no-fix-framerate', action='store_true',
                         help='If specified, subsync will not attempt to correct a framerate '
                              'mismatch between reference and subtitles.')
-    parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
-                        help='If specified, serialize reference speech to a numpy array, '
-                             'and create an archive with input/output subtitles '
-                             'and serialized speech.')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
