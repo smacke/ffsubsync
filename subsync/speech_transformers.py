@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*- 
+# -*- coding: utf-8 -*-
 import logging
 from io import BytesIO
 import subprocess
@@ -131,21 +131,31 @@ class VideoSpeechTransformer(TransformerMixin):
         self.video_speech_results_ = None
 
     def try_fit_using_embedded_subs(self, fname):
-        ffmpeg_args = ['ffmpeg']
-        ffmpeg_args.extend([
-            '-loglevel', 'fatal',
-            '-nostdin',
-            '-i', fname,
-            '-map', '0:s:0',
-            '-f', 'srt',
-            '-'
-        ])
-        process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=None)
-        output = BytesIO(process.communicate()[0])
-        if process.returncode != 0:
+        embedded_subs = []
+        embedded_subs_times = []
+        # check first 5; should cover 99% of movies
+        for stream in range(5):
+            ffmpeg_args = ['ffmpeg']
+            ffmpeg_args.extend([
+                '-loglevel', 'fatal',
+                '-nostdin',
+                '-i', fname,
+                '-map', '0:s:{}'.format(stream),
+                '-f', 'srt',
+                '-'
+            ])
+            process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output = BytesIO(process.communicate()[0])
+            if process.returncode != 0:
+                break
+            pipe = make_subtitle_speech_pipeline(start_seconds=self.start_seconds).fit(output)
+            speech_step = pipe.steps[-1][1]
+            embedded_subs.append(speech_step.subtitle_speech_results_)
+            embedded_subs_times.append(speech_step.max_time_)
+        if len(embedded_subs) == 0:
             raise ValueError('Video file appears to lack subtitle stream')
-        pipe = make_subtitle_speech_pipeline(start_seconds=self.start_seconds).fit(output)
-        self.video_speech_results_ = pipe.steps[-1][1].subtitle_speech_results_
+        # use longest set of embedded subs
+        self.video_speech_results_ = embedded_subs[int(np.argmax(embedded_subs_times))]
 
     def fit(self, fname, *_):
         try:
