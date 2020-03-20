@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*- 
 import logging
+from io import BytesIO
 import subprocess
 import sys
 from datetime import timedelta
@@ -7,11 +8,48 @@ from datetime import timedelta
 import ffmpeg
 import numpy as np
 from sklearn.base import TransformerMixin
+from sklearn.pipeline import Pipeline
 import tqdm
 import webrtcvad
 
+from .constants import *
+from .subtitle_parser import make_subtitle_parser
+from .subtitle_transformers import SubtitleScaler
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def make_subtitle_speech_pipeline(
+        fmt='srt',
+        encoding=DEFAULT_ENCODING,
+        caching=False,
+        max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
+        start_seconds=DEFAULT_START_SECONDS,
+        scale_factor=DEFAULT_SCALE_FACTOR,
+        parser=None,
+        **kwargs
+):
+    if parser is None:
+        parser = make_subtitle_parser(
+            fmt,
+            encoding=encoding,
+            caching=caching,
+            max_subtitle_seconds=max_subtitle_seconds,
+            start_seconds=start_seconds
+        )
+    assert parser.encoding == encoding
+    assert parser.max_subtitle_seconds == max_subtitle_seconds
+    assert parser.start_seconds == start_seconds
+    return Pipeline([
+        ('parse', parser),
+        ('scale', SubtitleScaler(scale_factor)),
+        ('speech_extract', SubtitleSpeechTransformer(
+            sample_rate=SAMPLE_RATE,
+            start_seconds=start_seconds,
+            framerate_ratio=scale_factor,
+        ))
+    ])
 
 
 def _make_auditok_detector(sample_rate, frame_rate):
@@ -92,10 +130,35 @@ class VideoSpeechTransformer(TransformerMixin):
         self.vlc_mode = vlc_mode
         self.video_speech_results_ = None
 
+    def try_fit_using_embedded_subs(self, fname):
+        ffmpeg_args = ['ffmpeg']
+        ffmpeg_args.extend([
+            '-loglevel', 'fatal',
+            '-nostdin',
+            '-i', fname,
+            '-map', '0:s:0',
+            '-f', 'srt',
+            '-'
+        ])
+        process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=None)
+        output = BytesIO(process.communicate()[0])
+        if process.returncode != 0:
+            raise ValueError('Video file appears to lack subtitle stream')
+        pipe = make_subtitle_speech_pipeline(start_seconds=self.start_seconds).fit(output)
+        self.video_speech_results_ = pipe.steps[-1][1].subtitle_speech_results_
+
     def fit(self, fname, *_):
         try:
+            logger.info('Checking video for subtitles stream...')
+            self.try_fit_using_embedded_subs(fname)
+            logger.info('...success!')
+            return self
+        except Exception as e:
+            logger.info(e)
+        try:
             total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
-        except:
+        except Exception as e:
+            logger.warning(e)
             total_duration = None
         if self.vad == 'webrtc':
             detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)

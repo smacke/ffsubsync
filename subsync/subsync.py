@@ -11,86 +11,24 @@ import numpy as np
 from sklearn.pipeline import Pipeline
 
 from .aligners import FFTAligner, MaxScoreAligner
+from .constants import *
 from .speech_transformers import (
-        SubtitleSpeechTransformer,
-        VideoSpeechTransformer,
-        DeserializeSpeechTransformer
+    VideoSpeechTransformer,
+    DeserializeSpeechTransformer,
+    make_subtitle_speech_pipeline
 )
-from .subtitle_parser import GenericSubtitleParser
-from .subtitle_transformers import SubtitleMerger, SubtitleScaler, SubtitleShifter
+from .subtitle_parser import make_subtitle_parser
+from .subtitle_transformers import SubtitleMerger, SubtitleShifter
 from .version import __version__
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-SAMPLE_RATE = 100
-
-FRAMERATE_RATIOS = [24./23.976, 25./23.976, 25./24.]
-
-DEFAULT_FRAME_RATE = 48000
-DEFAULT_ENCODING = 'infer'
-DEFAULT_MAX_SUBTITLE_SECONDS = 10
-DEFAULT_START_SECONDS = 0
-DEFAULT_SCALE_FACTOR = 1
-DEFAULT_VAD = 'webrtc'
-DEFAULT_MAX_OFFSET_SECONDS = 600
-
-SUBTITLE_EXTENSIONS = ('srt', 'ass', 'ssa')
 
 
 def override(args, **kwargs):
     args_dict = dict(args.__dict__)
     args_dict.update(kwargs)
     return args_dict
-
-
-def make_srt_parser(
-        fmt,
-        encoding=DEFAULT_ENCODING,
-        caching=False,
-        max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
-        start_seconds=DEFAULT_START_SECONDS,
-        **kwargs
-):
-    return GenericSubtitleParser(
-        fmt=fmt,
-        encoding=encoding,
-        caching=caching,
-        max_subtitle_seconds=max_subtitle_seconds,
-        start_seconds=start_seconds
-    )
-
-
-def make_srt_speech_pipeline(
-        fmt='srt',
-        encoding=DEFAULT_ENCODING,
-        caching=False,
-        max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
-        start_seconds=DEFAULT_START_SECONDS,
-        scale_factor=DEFAULT_SCALE_FACTOR,
-        parser=None,
-        **kwargs
-):
-    if parser is None:
-        parser = make_srt_parser(
-            fmt,
-            encoding=encoding,
-            caching=caching,
-            max_subtitle_seconds=max_subtitle_seconds,
-            start_seconds=start_seconds
-        )
-    assert parser.encoding == encoding
-    assert parser.max_subtitle_seconds == max_subtitle_seconds
-    assert parser.start_seconds == start_seconds
-    return Pipeline([
-        ('parse', parser),
-        ('scale', SubtitleScaler(scale_factor)),
-        ('speech_extract', SubtitleSpeechTransformer(
-            sample_rate=SAMPLE_RATE,
-            start_seconds=start_seconds,
-            framerate_ratio=scale_factor,
-        ))
-    ])
 
 
 def run(args):
@@ -109,7 +47,7 @@ def run(args):
     if ref_format in SUBTITLE_EXTENSIONS:
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
-        reference_pipe = make_srt_speech_pipeline(
+        reference_pipe = make_subtitle_speech_pipeline(
             fmt=ref_format,
             **override(
                 args,
@@ -151,10 +89,10 @@ def run(args):
         if args.srtin is None:
             logger.info('unsynchronized subtitle file not specified; skipping synchronization')
             return retval
-    parser = make_srt_parser(fmt=args.srtin[-3:], caching=True, **args.__dict__)
+    parser = make_subtitle_parser(fmt=args.srtin[-3:], caching=True, **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
-        make_srt_speech_pipeline(
+        make_subtitle_speech_pipeline(
             **override(args, scale_factor=scale_factor, parser=parser)
         ).fit(args.srtin)
         for scale_factor in framerate_ratios

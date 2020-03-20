@@ -7,11 +7,29 @@ import pysubs2
 from sklearn.base import TransformerMixin
 import srt
 
+from .constants import *
 from .file_utils import open_file
 from .generic_subtitles import GenericSubtitle, GenericSubtitlesFile, SubsMixin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def make_subtitle_parser(
+        fmt,
+        encoding=DEFAULT_ENCODING,
+        caching=False,
+        max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
+        start_seconds=DEFAULT_START_SECONDS,
+        **kwargs
+):
+    return GenericSubtitleParser(
+        fmt=fmt,
+        encoding=encoding,
+        caching=caching,
+        max_subtitle_seconds=max_subtitle_seconds,
+        start_seconds=start_seconds
+    )
 
 
 def _preprocess_subs(subs, max_subtitle_seconds=None, start_seconds=0, tolerant=True):
