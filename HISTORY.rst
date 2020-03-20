@@ -112,3 +112,7 @@ History
 0.3.3 (2020-03-15)
 ------------------
 * Hotfix for test archive creation bug;
+
+0.3.4 (2020-03-20)
+------------------
+* Attempt speech extraction from subtitle tracks embedded in video first before using VAD;
