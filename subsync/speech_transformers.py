@@ -158,21 +158,22 @@ class VideoSpeechTransformer(TransformerMixin):
         self.video_speech_results_ = embedded_subs[int(np.argmax(embedded_subs_times))]
 
     def fit(self, fname, *_):
-        try:
-            logger.info('Checking video for subtitles stream...')
-            self.try_fit_using_embedded_subs(fname)
-            logger.info('...success!')
-            return self
-        except Exception as e:
-            logger.info(e)
+        if 'subs' in self.vad:
+            try:
+                logger.info('Checking video for subtitles stream...')
+                self.try_fit_using_embedded_subs(fname)
+                logger.info('...success!')
+                return self
+            except Exception as e:
+                logger.info(e)
         try:
             total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
         except Exception as e:
             logger.warning(e)
             total_duration = None
-        if self.vad == 'webrtc':
+        if 'webrtc' in self.vad:
             detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)
-        elif self.vad == 'auditok':
+        elif 'auditok' in self.vad:
             detector = _make_auditok_detector(self.sample_rate, self.frame_rate)
         else:
             raise ValueError('unknown vad: %s' % self.vad)

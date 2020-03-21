@@ -185,7 +185,8 @@ def make_parser():
     parser.add_argument('--reference-encoding',
                         help='What encoding to use for reading / writing reference subtitles '
                              '(if applicable, default=infer).')
-    parser.add_argument('--vad', choices=['webrtc', 'auditok'], default=None,
+    parser.add_argument('--vad', choices=['subs_then_webrtc', 'webrtc', 'subs_then_auditok', 'auditok'],
+                        default=None,
                         help='Which voice activity detector to use for speech extraction '
                              '(if using video / audio as a reference, default=webrtc).')
     parser.add_argument('--no-fix-framerate', action='store_true',
