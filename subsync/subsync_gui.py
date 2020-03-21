@@ -11,21 +11,23 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@Gooey
+@Gooey(tabbed_groups=True)
 def make_parser():
     parser = GooeyParser(description='Synchronize subtitles with video.')
-    parser.add_argument(
+    main_group = parser.add_argument_group('Required Options')
+    main_group.add_argument(
         'reference',
         help='Reference (video or subtitles file) to which to synchronize input subtitles.',
         widget='FileChooser'
     )
-    parser.add_argument('srtin', help='Input subtitles file', widget='FileChooser')
-    parser.add_argument('-o', '--srtout', help='Output subtitles file (default=${srtin}.synced.srt).')
-    parser.add_argument('--merge-with-reference', '--merge', action='store_true',
-                        help='Merge reference subtitles with synced output subtitles.')
-    parser.add_argument('--make-test-case', '--create-test-case', action='store_true',
-                        help='If specified, create a test archive a few KiB in size '
-                             'to send to the developer as a debugging aid.')
+    main_group.add_argument('srtin', help='Input subtitles file', widget='FileChooser')
+    main_group.add_argument('-o', '--srtout', help='Output subtitles file (default=${srtin}.synced.srt).')
+    advanced_group = parser.add_argument_group('Advanced Options')
+    advanced_group.add_argument('--merge-with-reference', '--merge', action='store_true',
+                                help='Merge reference subtitles with synced output subtitles.')
+    advanced_group.add_argument('--make-test-case', '--create-test-case', action='store_true',
+                                help='If specified, create a test archive a few KiB in size '
+                                     'to send to the developer as a debugging aid.')
     return parser
 
 
