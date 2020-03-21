@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
+from contextlib import contextmanager
 import logging
-from io import BytesIO
+from io import BytesIO, StringIO
 import subprocess
 import sys
 from datetime import timedelta
@@ -122,12 +123,13 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
 
 
 class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, vlc_mode=False):
+    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, vlc_mode=False, gui_mode=False):
         self.vad = vad
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
         self.start_seconds = start_seconds
         self.vlc_mode = vlc_mode
+        self.gui_mode = gui_mode
         self.video_speech_results_ = None
 
     def try_fit_using_embedded_subs(self, fname):
@@ -198,19 +200,36 @@ class VideoSpeechTransformer(TransformerMixin):
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate
         windows_per_buffer = 10000
         simple_progress = 0.
-        with tqdm.tqdm(total=total_duration, disable=self.vlc_mode) as pbar:
-            while True:
-                in_bytes = process.stdout.read(frames_per_window * windows_per_buffer)
-                if not in_bytes:
-                    break
-                newstuff = len(in_bytes) / float(bytes_per_frame) / self.frame_rate
-                simple_progress += newstuff
-                pbar.update(newstuff)
-                if self.vlc_mode and total_duration is not None:
-                    print("%d" % int(simple_progress * 100. / total_duration))
-                    sys.stdout.flush()
-                in_bytes = np.frombuffer(in_bytes, np.uint8)
-                media_bstring.append(detector(in_bytes))
+
+        @contextmanager
+        def redirect_stderr(enter_result=None):
+            yield enter_result
+        tqdm_extra_args = {}
+        should_print_redirected_stderr = self.gui_mode
+        if self.gui_mode:
+            try:
+                from contextlib import redirect_stderr
+                tqdm_extra_args['file'] = sys.stdout
+            except ImportError:
+                should_print_redirected_stderr = False
+        pbar_output = StringIO()
+        with redirect_stderr(pbar_output):
+            with tqdm.tqdm(total=total_duration, disable=self.vlc_mode, **tqdm_extra_args) as pbar:
+                while True:
+                    in_bytes = process.stdout.read(frames_per_window * windows_per_buffer)
+                    if not in_bytes:
+                        break
+                    newstuff = len(in_bytes) / float(bytes_per_frame) / self.frame_rate
+                    simple_progress += newstuff
+                    pbar.update(newstuff)
+                    if self.vlc_mode and total_duration is not None:
+                        print("%d" % int(simple_progress * 100. / total_duration))
+                        sys.stdout.flush()
+                    if should_print_redirected_stderr:
+                        print(pbar_output.read())
+                        sys.stdout.flush()
+                    in_bytes = np.frombuffer(in_bytes, np.uint8)
+                    media_bstring.append(detector(in_bytes))
         self.video_speech_results_ = np.concatenate(media_bstring)
         return self
 

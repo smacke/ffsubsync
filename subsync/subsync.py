@@ -69,7 +69,8 @@ def run(args):
                                                       sample_rate=SAMPLE_RATE,
                                                       frame_rate=args.frame_rate,
                                                       start_seconds=args.start_seconds,
-                                                      vlc_mode=args.vlc_mode))
+                                                      vlc_mode=args.vlc_mode,
+                                                      gui_mode=args.gui_mode))
         ])
     if args.no_fix_framerate:
         framerate_ratios = [1.]
@@ -208,6 +209,7 @@ def add_cli_only_args(parser):
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
 
 
 def make_parser():

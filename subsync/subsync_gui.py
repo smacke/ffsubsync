@@ -11,7 +11,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@Gooey(tabbed_groups=True)
+@Gooey(
+    tabbed_groups=True,
+    progress_regex=r"(\d+)%",
+    hide_progress_msg=True
+)
 def make_parser():
     parser = GooeyParser(description='Synchronize subtitles with video.')
     main_group = parser.add_argument_group('Required Options')
@@ -36,6 +40,7 @@ def main():
     _ = parser.parse_args()  # Fool Gooey into presenting the simpler menu
     add_cli_only_args(parser)
     args = parser.parse_args()
+    args.gui_mode = True
     return run(args)
 
 
