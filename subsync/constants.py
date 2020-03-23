@@ -14,6 +14,9 @@ DEFAULT_MAX_OFFSET_SECONDS = 600
 SUBTITLE_EXTENSIONS = ('srt', 'ass', 'ssa')
 
 GITHUB_DEV_USER = 'smacke'
+PROJECT_NAME = 'Subsync'
+PROJECT_LICENSE = 'MIT'
+COPYRIGHT_YEAR = '2019'
 GITHUB_REPO = 'subsync'
 DESCRIPTION = 'Synchronize subtitles with video.'
 LONG_DESCRIPTION = 'Automatic and language-agnostic synchronization of subtitles with video.'

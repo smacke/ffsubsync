@@ -7,7 +7,17 @@ from gooey import Gooey, GooeyParser
 import requests
 from requests.exceptions import Timeout
 
-from .constants import API_RELEASE_URL, RELEASE_URL, WEBSITE, DEV_WEBSITE, DESCRIPTION, LONG_DESCRIPTION
+from .constants import (
+    API_RELEASE_URL,
+    RELEASE_URL,
+    WEBSITE,
+    DEV_WEBSITE,
+    DESCRIPTION,
+    LONG_DESCRIPTION,
+    PROJECT_NAME,
+    PROJECT_LICENSE,
+    COPYRIGHT_YEAR,
+)
 from .subsync import run, add_cli_only_args
 from .version import __version__
 
@@ -41,17 +51,17 @@ _menu = [
             {
                 'type': 'AboutDialog',
                 'menuTitle': 'About',
-                'name': 'Subsync',
+                'name': PROJECT_NAME,
                 'description': LONG_DESCRIPTION,
                 'version': __version__,
-                'copyright': '2019',
+                'copyright': COPYRIGHT_YEAR,
                 'website': WEBSITE,
                 'developer': DEV_WEBSITE,
-                'license': 'MIT'
+                'license': PROJECT_LICENSE,
             },
             {
                 'type': 'Link',
-                'menuTitle': 'Check for updates',
+                'menuTitle': 'Download latest release',
                 'url': RELEASE_URL,
             }
         ]
@@ -68,7 +78,7 @@ _menu = [
 def make_parser():
     description = DESCRIPTION
     if _update_available():
-        description += '\nUpdate available! Please go to "File" -> "Check for updates" to update Subsync.'
+        description += '\nUpdate available! Please go to "File" -> "Download latest release" to update Subsync.'
     parser = GooeyParser(description=description)
     main_group = parser.add_argument_group('Required Options')
     main_group.add_argument(
@@ -77,7 +87,9 @@ def make_parser():
         widget='FileChooser'
     )
     main_group.add_argument('srtin', help='Input subtitles file', widget='FileChooser')
-    main_group.add_argument('-o', '--srtout', help='Output subtitles file (default=${srtin}.synced.srt).')
+    main_group.add_argument('-o', '--srtout',
+                            help='Output subtitles file (default=${srtin}.synced.srt).',
+                            widget='FileSaver')
     advanced_group = parser.add_argument_group('Advanced Options')
     advanced_group.add_argument('--merge-with-reference', '--merge', action='store_true',
                                 help='Merge reference subtitles with synced output subtitles.')
