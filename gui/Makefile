@@ -1,7 +1,12 @@
 .PHONY: macos
 
-macos:
-	python3 -m PyInstaller -F --windowed ./build.spec
+macos: clean app pkg
+
+app:
+	python3 -m PyInstaller -F --windowed macos.spec
+
+pkg:
+	./package-macos.sh
 
 clean:
 	rm -r dist/ build/
