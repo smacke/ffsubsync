@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import pytest
-from subsync.subsync_gui import _make_version_tuple
+from subsync.version import make_version_tuple
 
 
 @pytest.mark.parametrize('vstr, expected', [
@@ -9,4 +9,4 @@ from subsync.subsync_gui import _make_version_tuple
     ('4.5.6.1', (4, 5, 6, 1))
 ])
 def test_version_tuple_from_string(vstr, expected):
-    assert _make_version_tuple(vstr) == expected
+    assert make_version_tuple(vstr) == expected
