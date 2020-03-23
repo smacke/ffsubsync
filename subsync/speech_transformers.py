@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from contextlib import contextmanager
 import logging
-from io import BytesIO, StringIO
+import io
 import subprocess
 import sys
 from datetime import timedelta
@@ -147,7 +147,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 '-'
             ])
             process = subprocess.Popen(ffmpeg_args, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output = BytesIO(process.communicate()[0])
+            output = io.BytesIO(process.communicate()[0])
             if process.returncode != 0:
                 break
             pipe = make_subtitle_speech_pipeline(start_seconds=self.start_seconds).fit(output)
@@ -212,7 +212,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 tqdm_extra_args['file'] = sys.stdout
             except ImportError:
                 should_print_redirected_stderr = False
-        pbar_output = StringIO()
+        pbar_output = io.StringIO()
         with redirect_stderr(pbar_output):
             with tqdm.tqdm(total=total_duration, disable=self.vlc_mode, **tqdm_extra_args) as pbar:
                 while True:

@@ -1,2 +1,3 @@
 gooey
 pyinstaller
+requests
