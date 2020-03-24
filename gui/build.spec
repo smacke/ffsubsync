@@ -3,12 +3,17 @@
 import os
 import platform
 import gooey
+
+hookspath = None
+if platform.system() == 'Windows':
+    hookspath = ['./hooks']
+
 gooey_root = os.path.dirname(gooey.__file__)
 gooey_languages = Tree(os.path.join(gooey_root, 'languages'), prefix = 'gooey/languages')
 gooey_images = Tree(os.path.join(gooey_root, 'images'), prefix = 'gooey/images')
 a = Analysis(['./subsync-gui.py'],
              hiddenimports=[],
-             hookspath=None,
+             hookspath=hookspath,
              runtime_hooks=None,
              )
 pyz = PYZ(a.pure)

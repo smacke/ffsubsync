@@ -1,3 +1,0 @@
-gooey
-pyinstaller
-requests

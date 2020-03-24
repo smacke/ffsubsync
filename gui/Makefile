@@ -3,7 +3,7 @@
 macos: clean app pkg
 
 app:
-	python3 -m PyInstaller -F --windowed macos.spec
+	./build-macos.sh
 
 pkg:
 	./package-macos.sh
