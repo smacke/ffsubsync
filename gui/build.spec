@@ -4,21 +4,19 @@ import os
 import platform
 import gooey
 
-hookspath = None
-if platform.system() == 'Windows':
-    hookspath = ['./hooks']
 
 gooey_root = os.path.dirname(gooey.__file__)
 gooey_languages = Tree(os.path.join(gooey_root, 'languages'), prefix = 'gooey/languages')
 gooey_images = Tree(os.path.join(gooey_root, 'images'), prefix = 'gooey/images')
 a = Analysis(['./subsync-gui.py'],
              hiddenimports=[],
-             hookspath=hookspath,
+             hookspath=None,
              runtime_hooks=None,
              )
 pyz = PYZ(a.pure)
 
-options = [('u', None, 'OPTION'), ('u', None, 'OPTION'), ('u', None, 'OPTION')]
+# runtime options to pass to interpreter -- '-u' is for unbuffered io
+options = [('u', None, 'OPTION')]
 
 exe = EXE(pyz,
           a.scripts,
@@ -38,7 +36,8 @@ exe = EXE(pyz,
 
 
 if platform.system() == 'Darwin':
-    info_plist = {'addition_prop': 'additional_value'}
+    # info_plist = {'addition_prop': 'additional_value'}
+    info_plist = {}
     app = BUNDLE(exe,
                  name='Subsync.app',
                  bundle_identifier=None,

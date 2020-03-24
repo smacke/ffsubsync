@@ -3,7 +3,7 @@ import logging
 import math
 
 import numpy as np
-from sklearn.base import TransformerMixin
+from .sklearn_shim import TransformerMixin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

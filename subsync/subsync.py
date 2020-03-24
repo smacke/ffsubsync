@@ -8,7 +8,7 @@ import shutil
 import sys
 
 import numpy as np
-from sklearn.pipeline import Pipeline
+from .sklearn_shim import Pipeline
 
 from .aligners import FFTAligner, MaxScoreAligner
 from .constants import *

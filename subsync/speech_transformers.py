@@ -8,10 +8,9 @@ from datetime import timedelta
 
 import ffmpeg
 import numpy as np
-from sklearn.base import TransformerMixin
-from sklearn.pipeline import Pipeline
+from .sklearn_shim import TransformerMixin
+from .sklearn_shim import Pipeline
 import tqdm
-import webrtcvad
 
 from .constants import *
 from .subtitle_parser import make_subtitle_parser
@@ -95,6 +94,7 @@ def _make_auditok_detector(sample_rate, frame_rate):
 
 
 def _make_webrtcvad_detector(sample_rate, frame_rate):
+    import webrtcvad
     vad = webrtcvad.Vad()
     vad.set_mode(3)  # set non-speech pruning aggressiveness from 0 to 3
     window_duration = 1. / sample_rate  # duration in seconds

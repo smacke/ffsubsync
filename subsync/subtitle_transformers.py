@@ -3,7 +3,7 @@ from datetime import timedelta
 import logging
 import numbers
 
-from sklearn.base import TransformerMixin
+from .sklearn_shim import TransformerMixin
 
 from .generic_subtitles import GenericSubtitle, GenericSubtitlesFile, SubsMixin
 
