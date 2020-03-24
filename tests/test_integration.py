@@ -7,13 +7,13 @@ import tempfile
 
 import numpy as np
 import pytest
-from sklearn.pipeline import make_pipeline
 try:
     import yaml
 except ImportError:  # pyyaml does not work with py3.4
     pass
 
 from subsync import subsync
+from subsync.sklearn_shim import make_pipeline
 from subsync.speech_transformers import SubtitleSpeechTransformer
 from subsync.subtitle_parser import GenericSubtitleParser
 

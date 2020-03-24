@@ -5,8 +5,8 @@ from datetime import timedelta
 
 import pytest
 import numpy as np
-from sklearn.pipeline import make_pipeline
 
+from subsync.sklearn_shim import make_pipeline
 from subsync.speech_transformers import SubtitleSpeechTransformer
 from subsync.subtitle_parser import GenericSubtitleParser
 from subsync.subtitle_transformers import SubtitleShifter
