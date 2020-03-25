@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import logging
+import os
 import sys
 
 from gooey import Gooey, GooeyParser
@@ -14,6 +15,7 @@ from .constants import (
     PROJECT_NAME,
     PROJECT_LICENSE,
     COPYRIGHT_YEAR,
+    SUBSYNC_RESOURCES_ENV_MAGIC,
 )
 from .subsync import run, add_cli_only_args
 from .version import __version__, update_available
@@ -45,6 +47,11 @@ _menu = [
         ]
     }
 ]
+
+
+# set the env magic so that we look for resources in the right place
+if SUBSYNC_RESOURCES_ENV_MAGIC not in os.environ:
+    os.environ[SUBSYNC_RESOURCES_ENV_MAGIC] = getattr(sys, '_MEIPASS', '')
 
 
 @Gooey(

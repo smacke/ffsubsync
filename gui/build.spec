@@ -9,13 +9,23 @@ hookspath = None
 if platform.system() == 'Windows':
     hookspath = ['./hooks']
 
+ffmpeg_bin = os.path.join(os.curdir, 'ffmpeg-bin')
+if platform.system() == 'Darwin':
+    ffmpeg_bin = os.path.join(ffmpeg_bin, 'macos')
+elif platform.system() == 'Windows':
+    arch_bits = platform.architecture()[0][:2]
+    ffmpeg_bin = os.path.join(ffmpeg_bin, 'win{}'.format(arch_bits))
+else:
+    raise Exception('ffmpeg not available for {}'.format(platform.system()))
+
 gooey_root = os.path.dirname(gooey.__file__)
 gooey_languages = Tree(os.path.join(gooey_root, 'languages'), prefix = 'gooey/languages')
 gooey_images = Tree(os.path.join(gooey_root, 'images'), prefix = 'gooey/images')
 a = Analysis(['./subsync-gui.py'],
-             hiddenimports=[],
+             hiddenimports=['pkg_resources.py2_warn'],  # ref: https://github.com/pypa/setuptools/issues/1963
              hookspath=hookspath,
              runtime_hooks=None,
+             binaries=[(ffmpeg_bin, 'ffmpeg-bin')],
              )
 pyz = PYZ(a.pure)
 
@@ -36,7 +46,8 @@ exe = EXE(pyz,
           upx=True,
           console=False,
           windowed=True,
-          icon=os.path.join(gooey_root, 'images', 'program_icon.ico'))
+          icon=os.path.join(gooey_root, 'images', 'program_icon.ico'),
+          )
 
 
 if platform.system() == 'Darwin':

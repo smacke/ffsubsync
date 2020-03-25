@@ -35,7 +35,7 @@ def run(args):
     retval = 0
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
-    if args.make_test_case:
+    if args.make_test_case and not args.gui_mode:  # this validation not necessary for gui mode
         if args.srtin is None or args.srtout is None:
             logger.error('need to specify input and output srt files for test cases')
             return 1

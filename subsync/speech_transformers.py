@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import logging
 import io
 import os
+import platform
 import subprocess
 import sys
 from datetime import timedelta
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 #
 #   subprocess.check_output(['program_to_run', 'arg_1'],
 #                           **subprocess_args(False))
-def subprocess_args(include_stdout=True):
+def _subprocess_args(include_stdout=True):
     # The following is true only on Windows.
     if hasattr(subprocess, 'STARTUPINFO'):
         # On Windows, subprocess calls will pop up a command window by default
@@ -71,6 +72,18 @@ def subprocess_args(include_stdout=True):
                 'startupinfo': si,
                 'env': env})
     return ret
+
+
+def _ffmpeg_bin_path(bin_name):
+    if platform.system() == 'Windows':
+        bin_name = '{}.exe'.format(bin_name)
+    try:
+        resource_path = os.environ[SUBSYNC_RESOURCES_ENV_MAGIC]
+        if len(resource_path) > 0:
+            return os.path.join(resource_path, 'ffmpeg-bin', bin_name)
+    except KeyError as e:
+        logger.error("Couldn't find resource path; falling back to searching system path")
+    return bin_name
 
 
 def make_subtitle_speech_pipeline(
@@ -190,7 +203,7 @@ class VideoSpeechTransformer(TransformerMixin):
         embedded_subs_times = []
         # check first 5; should cover 99% of movies
         for stream in range(5):
-            ffmpeg_args = ['ffmpeg']
+            ffmpeg_args = [_ffmpeg_bin_path('ffmpeg')]
             ffmpeg_args.extend([
                 '-loglevel', 'fatal',
                 '-nostdin',
@@ -199,7 +212,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 '-f', 'srt',
                 '-'
             ])
-            process = subprocess.Popen(ffmpeg_args, **subprocess_args(include_stdout=True))
+            process = subprocess.Popen(ffmpeg_args, **_subprocess_args(include_stdout=True))
             output = io.BytesIO(process.communicate()[0])
             if process.returncode != 0:
                 break
@@ -222,7 +235,9 @@ class VideoSpeechTransformer(TransformerMixin):
             except Exception as e:
                 logger.info(e)
         try:
-            total_duration = float(ffmpeg.probe(fname)['format']['duration']) - self.start_seconds
+            total_duration = float(ffmpeg.probe(
+                fname, cmd=_ffmpeg_bin_path('ffprobe')
+            )['format']['duration']) - self.start_seconds
         except Exception as e:
             logger.warning(e)
             total_duration = None
@@ -233,7 +248,7 @@ class VideoSpeechTransformer(TransformerMixin):
         else:
             raise ValueError('unknown vad: %s' % self.vad)
         media_bstring = []
-        ffmpeg_args = ['ffmpeg']
+        ffmpeg_args = [_ffmpeg_bin_path('ffmpeg')]
         if self.start_seconds > 0:
             ffmpeg_args.extend([
                 '-ss', str(timedelta(seconds=self.start_seconds)),
@@ -248,7 +263,7 @@ class VideoSpeechTransformer(TransformerMixin):
             '-ar', str(self.frame_rate),
             '-'
         ])
-        process = subprocess.Popen(ffmpeg_args, **subprocess_args(include_stdout=True))
+        process = subprocess.Popen(ffmpeg_args, **_subprocess_args(include_stdout=True))
         bytes_per_frame = 2
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate
         windows_per_buffer = 10000
@@ -279,8 +294,9 @@ class VideoSpeechTransformer(TransformerMixin):
                         print("%d" % int(simple_progress * 100. / total_duration))
                         sys.stdout.flush()
                     if should_print_redirected_stderr:
+                        assert self.gui_mode
+                        # no need to flush since we pass -u to do unbuffered output for gui mode
                         print(pbar_output.read())
-                        sys.stdout.flush()
                     in_bytes = np.frombuffer(in_bytes, np.uint8)
                     media_bstring.append(detector(in_bytes))
         self.video_speech_results_ = np.concatenate(media_bstring)

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+SUBSYNC_RESOURCES_ENV_MAGIC = "subsync_resources_xj48gjdkl340"
+
 SAMPLE_RATE = 100
 
 FRAMERATE_RATIOS = [24./23.976, 25./23.976, 25./24.]
