@@ -7,21 +7,25 @@ import gooey
 
 hookspath = None
 if platform.system() == 'Windows':
-    hookspath = ['./hooks']
+    hookspath = [os.path.join(os.curdir, 'hooks')]
 
-ffmpeg_bin = os.path.join(os.curdir, 'ffmpeg-bin')
+ffmpeg_bin = os.path.join(os.curdir, 'resources', 'ffmpeg-bin')
+datas = []
 if platform.system() == 'Darwin':
     ffmpeg_bin = os.path.join(ffmpeg_bin, 'macos')
 elif platform.system() == 'Windows':
-    arch_bits = platform.architecture()[0][:2]
+    arch_bits = int(platform.architecture()[0][:2])
     ffmpeg_bin = os.path.join(ffmpeg_bin, 'win{}'.format(arch_bits))
+    if arch_bits == 64:
+        datas.append((os.path.join(os.curdir, 'resources', 'lib', 'win64', 'VCRUNTIME140_1.dll', '.'))
 else:
     raise Exception('ffmpeg not available for {}'.format(platform.system()))
 
 gooey_root = os.path.dirname(gooey.__file__)
 gooey_languages = Tree(os.path.join(gooey_root, 'languages'), prefix = 'gooey/languages')
 gooey_images = Tree(os.path.join(gooey_root, 'images'), prefix = 'gooey/images')
-a = Analysis(['./subsync-gui.py'],
+a = Analysis([os.path.join(os.curdir, 'subsync-gui.py')],
+             datas=datas,
              hiddenimports=['pkg_resources.py2_warn'],  # ref: https://github.com/pypa/setuptools/issues/1963
              hookspath=hookspath,
              runtime_hooks=None,

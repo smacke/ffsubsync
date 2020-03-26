@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
-#docker run -v "$(pwd):/src/" -v "$(pwd)/..:/subsync/" --entrypoint /bin/sh cdrx/pyinstaller-windows:python3-32bit -c "pip install -e /subsync && pip install -r /src/requirements.txt && pyinstaller --debug all --clean -y --dist ./dist/windows --workpath /tmp *.spec"
-docker run -v "$(pwd):/src/" -v "$(pwd)/..:/subsync/" --entrypoint /bin/sh cdrx/pyinstaller-windows:python3-32bit -c "pip install -e /subsync && /entrypoint.sh"
-mv ./dist/windows ./dist/win32
+nbits=${1:-64}
+tag="python3"
+if [[ "$nbits" == 32 ]]; then
+    tag="${tag}-32bit"
+fi
+docker run -v "$(pwd):/src/" -v "$(pwd)/..:/subsync/" --entrypoint /bin/sh "cdrx/pyinstaller-windows:${tag}" -c "pip install -e /subsync && /entrypoint.sh"
+rm -r "./dist/win${nbits}"
+mv ./dist/windows "./dist/win${nbits}"
