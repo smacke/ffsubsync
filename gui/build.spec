@@ -9,7 +9,7 @@ hookspath = None
 if platform.system() == 'Windows':
     hookspath = [os.path.join(os.curdir, 'hooks')]
 
-ffmpeg_bin = os.path.join(os.curdir, 'resources', 'ffmpeg-bin')
+ffmpeg_bin = '../resources/ffmpeg-bin'
 datas = []
 if platform.system() == 'Darwin':
     ffmpeg_bin = os.path.join(ffmpeg_bin, 'macos')
@@ -17,7 +17,7 @@ elif platform.system() == 'Windows':
     arch_bits = int(platform.architecture()[0][:2])
     ffmpeg_bin = os.path.join(ffmpeg_bin, 'win{}'.format(arch_bits))
     if arch_bits == 64:
-        datas.append((os.path.join(os.curdir, 'resources', 'lib', 'win64', 'VCRUNTIME140_1.dll', '.'))
+        datas.append(('../resources/lib/win64/VCRUNTIME140_1.dll', '.'))
 else:
     raise Exception('ffmpeg not available for {}'.format(platform.system()))
 

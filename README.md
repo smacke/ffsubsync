@@ -8,9 +8,9 @@ subsync
 Language-agnostic automatic synchronization of subtitles with video, so that
 subtitles are aligned to the correct starting point within the video.
 
-|                | Turn this:                       |  Into this:
-:---------------:|:--------------------------------:|:----------------------------------:
-![](subsync.png) | ![](tearing-me-apart-wrong.gif)  |  ![](tearing-me-apart-correct.gif)
+|                          | Turn this:                                 |  Into this:
+:-------------------------:|:------------------------------------------:|:----------------------------------:
+![](resources/subsync.png) | ![](resources/tearing-me-apart-wrong.gif)  |  ![](resources/tearing-me-apart-correct.gif)
 
 Install
 -------
