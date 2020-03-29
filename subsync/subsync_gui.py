@@ -55,6 +55,8 @@ if SUBSYNC_RESOURCES_ENV_MAGIC not in os.environ:
 
 
 @Gooey(
+    program_name=PROJECT_NAME,
+    image_dir=os.path.join(os.environ[SUBSYNC_RESOURCES_ENV_MAGIC], 'img'),
     menu=_menu,
     tabbed_groups=True,
     progress_regex=r"(\d+)%",
@@ -65,7 +67,7 @@ def make_parser():
     if update_available():
         description += '\nUpdate available! Please go to "File" -> "Download latest release" to update Subsync.'
     parser = GooeyParser(description=description)
-    main_group = parser.add_argument_group('Required Options')
+    main_group = parser.add_argument_group('Basic')
     main_group.add_argument(
         'reference',
         help='Reference (video or subtitles file) to which to synchronize input subtitles.',
@@ -75,7 +77,7 @@ def make_parser():
     main_group.add_argument('-o', '--srtout',
                             help='Output subtitles file (default=${srtin}.synced.srt).',
                             widget='FileSaver')
-    advanced_group = parser.add_argument_group('Advanced Options')
+    advanced_group = parser.add_argument_group('Advanced')
     advanced_group.add_argument('--merge-with-reference', '--merge', action='store_true',
                                 help='Merge reference subtitles with synced output subtitles.')
     advanced_group.add_argument('--make-test-case', '--create-test-case', action='store_true',

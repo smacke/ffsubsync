@@ -12,7 +12,7 @@ if platform.system() == 'Windows':
     hookspath = [os.path.join(os.curdir, 'hooks')]
 
 ffmpeg_bin = os.path.join(root, 'resources/ffmpeg-bin')
-datas = []
+datas = [(os.path.join(root, 'resources/img/program_icon.png'), './img')]
 if platform.system() == 'Darwin':
     ffmpeg_bin = os.path.join(ffmpeg_bin, 'macos')
 elif platform.system() == 'Windows':
@@ -52,7 +52,7 @@ exe = EXE(pyz,
           upx=True,
           console=False,
           windowed=True,
-          icon=os.path.join(gooey_root, 'images', 'program_icon.ico'),
+          #icon=os.path.join(gooey_root, 'images', 'program_icon.ico'),
           )
 
 
@@ -60,6 +60,7 @@ if platform.system() == 'Darwin':
     # info_plist = {'addition_prop': 'additional_value'}
     info_plist = {}
     app = BUNDLE(exe,
+                 icon=os.path.join(root, 'resources', 'img', 'program_icon.icns'),
                  name='Subsync.app',
                  bundle_identifier=None,
                  info_plist=info_plist
