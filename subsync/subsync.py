@@ -10,7 +10,7 @@ import sys
 import numpy as np
 from .sklearn_shim import Pipeline
 
-from .aligners import FFTAligner, MaxScoreAligner
+from .aligners import FFTAligner, MaxScoreAligner, FailedToFindAlignmentException
 from .constants import *
 from .speech_transformers import (
     VideoSpeechTransformer,
@@ -21,7 +21,7 @@ from .subtitle_parser import make_subtitle_parser
 from .subtitle_transformers import SubtitleMerger, SubtitleShifter
 from .version import __version__
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +44,9 @@ def run(args):
         logger.error('merging synced output with reference only valid '
                      'when reference composed of subtitles')
         return 1
+    if args.make_test_case:
+        handler = logging.FileHandler('subsync.log')
+        logger.addHandler(handler)
     if ref_format in SUBTITLE_EXTENSIONS:
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
@@ -101,33 +104,38 @@ def run(args):
     logger.info('...done')
     logger.info('computing alignments...')
     max_offset_seconds = args.max_offset_seconds
-    offset_samples, best_srt_pipe = MaxScoreAligner(
-        FFTAligner, SAMPLE_RATE, max_offset_seconds
-    ).fit_transform(
-        reference_pipe.transform(args.reference),
-        srt_pipes,
-    )
-    logger.info('...done')
-    offset_seconds = offset_samples / float(SAMPLE_RATE)
-    scale_step = best_srt_pipe.named_steps['scale']
-    logger.info('offset seconds: %.3f', offset_seconds)
-    logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
-    output_steps = [('shift', SubtitleShifter(offset_seconds))]
-    if args.merge_with_reference:
-        output_steps.append(
-            ('merge',
-             SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
+    try:
+        sync_was_successful = True
+        offset_samples, best_srt_pipe = MaxScoreAligner(
+            FFTAligner, SAMPLE_RATE, max_offset_seconds
+        ).fit_transform(
+            reference_pipe.transform(args.reference),
+            srt_pipes,
         )
-    output_pipe = Pipeline(output_steps)
-    out_subs = output_pipe.fit_transform(scale_step.subs_)
-    if args.output_encoding != 'same':
-        out_subs = out_subs.set_encoding(args.output_encoding)
-    if args.srtout is not None:
-        out_subs.write_file(args.srtout)
-    else:
-        outname = '{}.synced.srt'.format(args.srtin[:-4])
-        logger.info('writing output to {}'.format(outname))
-        out_subs.write_file(outname)
+        logger.info('...done')
+        offset_seconds = offset_samples / float(SAMPLE_RATE)
+        scale_step = best_srt_pipe.named_steps['scale']
+        logger.info('offset seconds: %.3f', offset_seconds)
+        logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
+        output_steps = [('shift', SubtitleShifter(offset_seconds))]
+        if args.merge_with_reference:
+            output_steps.append(
+                ('merge',
+                 SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
+            )
+        output_pipe = Pipeline(output_steps)
+        out_subs = output_pipe.fit_transform(scale_step.subs_)
+        if args.output_encoding != 'same':
+            out_subs = out_subs.set_encoding(args.output_encoding)
+        if args.srtout is not None:
+            out_subs.write_file(args.srtout)
+        else:
+            outname = '{}.synced.srt'.format(args.srtin[:-4])
+            logger.info('writing output to {}'.format(outname))
+            out_subs.write_file(outname)
+    except FailedToFindAlignmentException as e:
+        sync_was_successful = False
+        logger.error(e)
     if args.make_test_case:
         if npy_savename is None:
             raise ValueError('need non-null npy_savename')
@@ -138,9 +146,13 @@ def run(args):
         logger.info('creating test archive {}.tar.gz...'.format(tar_dir))
         os.mkdir(tar_dir)
         try:
+            shutil.move('subsync.log', tar_dir)
             shutil.copy(args.srtin, tar_dir)
-            shutil.move(args.srtout, tar_dir)
-            if args.serialize_speech or args.reference == npy_savename:
+            if sync_was_successful:
+                shutil.move(args.srtout, tar_dir)
+            if ref_format in SUBTITLE_EXTENSIONS:
+                shutil.copy(args.reference, tar_dir)
+            elif args.serialize_speech or args.reference == npy_savename:
                 shutil.copy(npy_savename, tar_dir)
             else:
                 shutil.move(npy_savename, tar_dir)
