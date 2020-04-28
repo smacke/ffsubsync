@@ -12,6 +12,20 @@ Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
 ![](tearing-me-apart-wrong.gif)  |  ![](tearing-me-apart-correct.gif)
 
+Table of Contents
+-----------------
+
+- [Install](#install)
+- [Usage](#usage)
+- [Speed](#speed)
+- [How It Works](#how-it-works)
+- [Limitations](#limitations)
+- [VLC Integration](#vlc-integration)
+- [Future Work](#future-work)
+- [History](#history)
+- [Credits](#credits)
+- [License](#license)
+
 Install
 -------
 First, make sure ffmpeg is installed. On MacOS, this looks like:
