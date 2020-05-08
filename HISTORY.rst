@@ -116,3 +116,7 @@ History
 0.3.4 (2020-03-20)
 ------------------
 * Attempt speech extraction from subtitle tracks embedded in video first before using VAD;
+
+0.3.5 (2020-05-08)
+------------------
+* Fix corner case bug that occurred when multiple sync attempts were scored the same;

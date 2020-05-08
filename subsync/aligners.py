@@ -74,5 +74,5 @@ class MaxScoreAligner(TransformerMixin):
         scores = self._scores
         if self.max_offset_samples is not None:
             scores = filter(lambda s: abs(s[0][1]) <= self.max_offset_samples, scores)
-        (score, offset), subpipe = max(scores)
+        (score, offset), subpipe = max(scores, key=lambda x: x[0][0])
         return offset, subpipe
