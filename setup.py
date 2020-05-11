@@ -21,6 +21,7 @@ setup(
     author_email='stephen.macke@gmail.com',
     description='Language-agnostic synchronization of subtitles with video via speech detection.',
     long_description=read_file('README.md'),
+    long_description_content_type='text/markdown',
     url='https://github.com/smacke/subsync',
     packages=find_packages(exclude=['docs']),
     include_package_data=True,
