@@ -120,3 +120,7 @@ History
 0.3.5 (2020-05-08)
 ------------------
 * Fix corner case bug that occurred when multiple sync attempts were scored the same;
+
+0.3.7 (2020-05-11)
+------------------
+* Fix PyPI issues;

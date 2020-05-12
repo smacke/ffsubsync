@@ -2,10 +2,10 @@
 .PHONY: clean dist deploy check test tests deps devdeps
 
 clean:
-	rm -rf dist/ *.egg-info/
+	rm -rf dist/ build/ *.egg-info/
 
 dist: clean
-	python setup.py sdist
+	python setup.py sdist bdist_wheel --universal
 
 deploy: dist
 	twine upload dist/*

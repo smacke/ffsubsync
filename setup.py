@@ -28,7 +28,7 @@ setup(
     install_requires=requirements,
     entry_points={
         'console_scripts': [
-            'subsync = ffsubsync:main'
+            'subsync = ffsubsync:main',
             'ffsubsync = ffsubsync:main'
         ],
     },
