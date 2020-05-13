@@ -5,7 +5,7 @@ FFsubsync
 [![License: MIT](https://img.shields.io/badge/License-MIT-maroon.svg)](https://opensource.org/licenses/MIT)
 [![Python Versions](https://img.shields.io/pypi/pyversions/ffsubsync.svg)](https://pypi.org/project/ffsubsync)
 [![Documentation Status](https://readthedocs.org/projects/ffsubsync/badge/?version=latest)](https://ffsubsync.readthedocs.io/en/latest/?badge=latest)
-[![PyPI Version](https://img.shields.io/pypi/v/ffsubsync.svg)](https://img.shields.io/pypi/v/ffsubsync.svg)
+[![PyPI Version](https://img.shields.io/pypi/v/ffsubsync.svg)](https://pypi.org/project/ffsubsync)
 
 
 Language-agnostic automatic synchronization of subtitles with video, so that
