@@ -124,3 +124,8 @@ History
 0.3.7 (2020-05-11)
 ------------------
 * Fix PyPI issues;
+
+0.4.0 (2020-06-02)
+------------------
+* Remove dependency on scikit-learn;
+* Implement PyInstaller / Gooey build process for graphical application on MacOS and Windows;
