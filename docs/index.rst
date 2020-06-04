@@ -20,6 +20,6 @@ Indices and tables
 * :ref:`search`
 
 .. argparse::
-   :module: ffsubsync.subsync
+   :module: ffsubsync.ffsubsync
    :func: make_parser
    :prog: ffsubsync
