@@ -78,11 +78,19 @@ def make_parser():
                             help='Output subtitles file (default=${srtin}.synced.srt).',
                             widget='FileSaver')
     advanced_group = parser.add_argument_group('Advanced')
+
+    # TODO: these are shared between gui and cli; don't duplicate this code
     advanced_group.add_argument('--merge-with-reference', '--merge', action='store_true',
                                 help='Merge reference subtitles with synced output subtitles.')
     advanced_group.add_argument('--make-test-case', '--create-test-case', action='store_true',
                                 help='If specified, create a test archive a few KiB in size '
                                      'to send to the developer as a debugging aid.')
+    advanced_group.add_argument(
+        '--reference-stream', '--refstream', '--reference-track', '--reftrack', default=None,
+        help='Which stream/track in the video file to use as reference, '
+             'formatted according to ffmpeg conventions. For example, s:0 '
+             'uses the first subtitle track; a:3 would use the fourth audio track.'
+    )
     return parser
 
 

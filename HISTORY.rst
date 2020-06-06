@@ -129,3 +129,7 @@ History
 ------------------
 * Remove dependency on scikit-learn;
 * Implement PyInstaller / Gooey build process for graphical application on MacOS and Windows;
+
+0.4.1 (2020-06-06)
+------------------
+* Add --reference-stream option for selecting the stream / track from the video reference to use for speech detection;

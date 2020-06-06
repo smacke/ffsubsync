@@ -67,11 +67,15 @@ def run(args):
         vad = args.vad or DEFAULT_VAD
         if args.reference_encoding is not None:
             logger.warning('Reference srt encoding specified, but reference was a video file')
+        ref_stream = args.reference_stream
+        if ref_stream is not None and not ref_stream.startswith('0:'):
+            ref_stream = '0:' + ref_stream
         reference_pipe = Pipeline([
             ('speech_extract', VideoSpeechTransformer(vad=vad,
                                                       sample_rate=SAMPLE_RATE,
                                                       frame_rate=args.frame_rate,
                                                       start_seconds=args.start_seconds,
+                                                      ref_stream=ref_stream,
                                                       vlc_mode=args.vlc_mode,
                                                       gui_mode=args.gui_mode))
         ])
@@ -214,12 +218,19 @@ def add_cli_only_args(parser):
     parser.add_argument('--vad', choices=['subs_then_webrtc', 'webrtc', 'subs_then_auditok', 'auditok'],
                         default=None,
                         help='Which voice activity detector to use for speech extraction '
-                             '(if using video / audio as a reference, default=webrtc).')
+                             '(if using video / audio as a reference, default={}).'.format(DEFAULT_VAD))
     parser.add_argument('--no-fix-framerate', action='store_true',
                         help='If specified, subsync will not attempt to correct a framerate '
                              'mismatch between reference and subtitles.')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
+    parser.add_argument(
+        '--reference-stream', '--refstream', '--reference-track', '--reftrack',
+        default=None,
+        help='Which stream/track in the video file to use as reference, '
+             'formatted according to ffmpeg conventions. For example, s:0 '
+             'uses the first subtitle track; a:3 would use the third audio track.'
+    )
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
 

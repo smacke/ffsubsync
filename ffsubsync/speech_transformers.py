@@ -74,7 +74,7 @@ def _subprocess_args(include_stdout=True):
     return ret
 
 
-def _ffmpeg_bin_path(bin_name):
+def _ffmpeg_bin_path(bin_name, gui_mode):
     if platform.system() == 'Windows':
         bin_name = '{}.exe'.format(bin_name)
     try:
@@ -82,7 +82,8 @@ def _ffmpeg_bin_path(bin_name):
         if len(resource_path) > 0:
             return os.path.join(resource_path, 'ffmpeg-bin', bin_name)
     except KeyError as e:
-        logger.error("Couldn't find resource path; falling back to searching system path")
+        if gui_mode:
+            logger.info("Couldn't find resource path; falling back to searching system path")
     return bin_name
 
 
@@ -189,26 +190,31 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
 
 
 class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, vlc_mode=False, gui_mode=False):
+    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, ref_stream=None, vlc_mode=False, gui_mode=False):
         self.vad = vad
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
         self.start_seconds = start_seconds
         self.vlc_mode = vlc_mode
         self.gui_mode = gui_mode
+        self.ref_stream = ref_stream
         self.video_speech_results_ = None
 
     def try_fit_using_embedded_subs(self, fname):
         embedded_subs = []
         embedded_subs_times = []
-        # check first 5; should cover 99% of movies
-        for stream in range(5):
-            ffmpeg_args = [_ffmpeg_bin_path('ffmpeg')]
+        if self.ref_stream is None:
+            # check first 5; should cover 99% of movies
+            streams_to_try = map('0:s:{}'.format, range(5))
+        else:
+            streams_to_try = [self.ref_stream]
+        for stream in streams_to_try:
+            ffmpeg_args = [_ffmpeg_bin_path('ffmpeg', self.gui_mode)]
             ffmpeg_args.extend([
                 '-loglevel', 'fatal',
                 '-nostdin',
                 '-i', fname,
-                '-map', '0:s:{}'.format(stream),
+                '-map', '{}'.format(stream),
                 '-f', 'srt',
                 '-'
             ])
@@ -226,7 +232,7 @@ class VideoSpeechTransformer(TransformerMixin):
         self.video_speech_results_ = embedded_subs[int(np.argmax(embedded_subs_times))]
 
     def fit(self, fname, *_):
-        if 'subs' in self.vad:
+        if 'subs' in self.vad and (self.ref_stream is None or self.ref_stream.startswith('0:s:')):
             try:
                 logger.info('Checking video for subtitles stream...')
                 self.try_fit_using_embedded_subs(fname)
@@ -236,7 +242,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 logger.info(e)
         try:
             total_duration = float(ffmpeg.probe(
-                fname, cmd=_ffmpeg_bin_path('ffprobe')
+                fname, cmd=_ffmpeg_bin_path('ffprobe', self.gui_mode)
             )['format']['duration']) - self.start_seconds
         except Exception as e:
             logger.warning(e)
@@ -248,7 +254,7 @@ class VideoSpeechTransformer(TransformerMixin):
         else:
             raise ValueError('unknown vad: %s' % self.vad)
         media_bstring = []
-        ffmpeg_args = [_ffmpeg_bin_path('ffmpeg')]
+        ffmpeg_args = [_ffmpeg_bin_path('ffmpeg', self.gui_mode)]
         if self.start_seconds > 0:
             ffmpeg_args.extend([
                 '-ss', str(timedelta(seconds=self.start_seconds)),
@@ -257,6 +263,7 @@ class VideoSpeechTransformer(TransformerMixin):
             '-loglevel', 'fatal',
             '-nostdin',
             '-i', fname,
+            *(['-map', self.ref_stream] if self.ref_stream is not None and self.ref_stream.startswith('0:a:') else []),
             '-f', 's16le',
             '-ac', '1',
             '-acodec', 'pcm_s16le',
@@ -299,6 +306,10 @@ class VideoSpeechTransformer(TransformerMixin):
                         print(pbar_output.read())
                     in_bytes = np.frombuffer(in_bytes, np.uint8)
                     media_bstring.append(detector(in_bytes))
+        if len(media_bstring) == 0:
+            raise ValueError(
+                'Unable to detect speech. Perhaps try specifying a different stream / track, or a different vad.'
+            )
         self.video_speech_results_ = np.concatenate(media_bstring)
         return self
 
