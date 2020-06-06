@@ -262,8 +262,11 @@ class VideoSpeechTransformer(TransformerMixin):
         ffmpeg_args.extend([
             '-loglevel', 'fatal',
             '-nostdin',
-            '-i', fname,
-            *(['-map', self.ref_stream] if self.ref_stream is not None and self.ref_stream.startswith('0:a:') else []),
+            '-i', fname
+        ])
+        if self.ref_stream is not None and self.ref_stream.startswith('0:a:'):
+            ffmpeg_args.extend(['-map', self.ref_stream])
+        ffmpeg_args.extend([
             '-f', 's16le',
             '-ac', '1',
             '-acodec', 'pcm_s16le',

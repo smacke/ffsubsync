@@ -133,3 +133,7 @@ History
 0.4.1 (2020-06-06)
 ------------------
 * Add --reference-stream option for selecting the stream / track from the video reference to use for speech detection;
+
+0.4.2 (2020-06-06)
+------------------
+* Fix Python 2 compatibility bug;
