@@ -74,9 +74,11 @@ def _subprocess_args(include_stdout=True):
     return ret
 
 
-def _ffmpeg_bin_path(bin_name, gui_mode):
+def _ffmpeg_bin_path(bin_name, gui_mode, ffmpeg_resources_path=None):
     if platform.system() == 'Windows':
         bin_name = '{}.exe'.format(bin_name)
+    if ffmpeg_resources_path is not None:
+        return os.path.join(ffmpeg_resources_path, bin_name)
     try:
         resource_path = os.environ[SUBSYNC_RESOURCES_ENV_MAGIC]
         if len(resource_path) > 0:
@@ -190,14 +192,15 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
 
 
 class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, ref_stream=None, vlc_mode=False, gui_mode=False):
+    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, ffmpeg_path=None, ref_stream=None, vlc_mode=False, gui_mode=False):
         self.vad = vad
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
         self.start_seconds = start_seconds
+        self.ffmpeg_path = ffmpeg_path
+        self.ref_stream = ref_stream
         self.vlc_mode = vlc_mode
         self.gui_mode = gui_mode
-        self.ref_stream = ref_stream
         self.video_speech_results_ = None
 
     def try_fit_using_embedded_subs(self, fname):
@@ -209,7 +212,7 @@ class VideoSpeechTransformer(TransformerMixin):
         else:
             streams_to_try = [self.ref_stream]
         for stream in streams_to_try:
-            ffmpeg_args = [_ffmpeg_bin_path('ffmpeg', self.gui_mode)]
+            ffmpeg_args = [_ffmpeg_bin_path('ffmpeg', self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path)]
             ffmpeg_args.extend([
                 '-loglevel', 'fatal',
                 '-nostdin',
@@ -242,7 +245,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 logger.info(e)
         try:
             total_duration = float(ffmpeg.probe(
-                fname, cmd=_ffmpeg_bin_path('ffprobe', self.gui_mode)
+                fname, cmd=_ffmpeg_bin_path('ffprobe', self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path)
             )['format']['duration']) - self.start_seconds
         except Exception as e:
             logger.warning(e)
@@ -254,7 +257,7 @@ class VideoSpeechTransformer(TransformerMixin):
         else:
             raise ValueError('unknown vad: %s' % self.vad)
         media_bstring = []
-        ffmpeg_args = [_ffmpeg_bin_path('ffmpeg', self.gui_mode)]
+        ffmpeg_args = [_ffmpeg_bin_path('ffmpeg', self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path)]
         if self.start_seconds > 0:
             ffmpeg_args.extend([
                 '-ss', str(timedelta(seconds=self.start_seconds)),

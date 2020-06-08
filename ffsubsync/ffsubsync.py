@@ -75,6 +75,7 @@ def run(args):
                                                       sample_rate=SAMPLE_RATE,
                                                       frame_rate=args.frame_rate,
                                                       start_seconds=args.start_seconds,
+                                                      ffmpeg_path=args.ffmpeg_path,
                                                       ref_stream=ref_stream,
                                                       vlc_mode=args.vlc_mode,
                                                       gui_mode=args.gui_mode))
@@ -230,6 +231,10 @@ def add_cli_only_args(parser):
         help='Which stream/track in the video file to use as reference, '
              'formatted according to ffmpeg conventions. For example, s:0 '
              'uses the first subtitle track; a:3 would use the third audio track.'
+    )
+    parser.add_argument(
+        '--ffmpeg-path', '--ffmpegpath', default=None,
+        help='Where to look for ffmpeg and ffprobe. Uses the system PATH by default.'
     )
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
