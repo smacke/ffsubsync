@@ -15,6 +15,14 @@ Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
 ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-wrong.gif)  |  ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-correct.gif)
 
+Helping Development
+-------------------
+At the request of some, you can now help cover my coffee expenses using the
+Github Sponsors button at the top (recurring monthly payments), or using the below
+Paypal Donate button (one-time payment):
+
+[![Donate](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=XJC5ANLMYECJE)
+
 Install
 -------
 First, make sure ffmpeg is installed. On MacOS, this looks like:

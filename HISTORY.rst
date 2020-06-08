@@ -137,3 +137,9 @@ History
 0.4.2 (2020-06-06)
 ------------------
 * Fix Python 2 compatibility bug;
+
+0.4.3 (2020-06-07)
+------------------
+* Fix regression where stdout not used for default output;
+* Add ability to specify path to ffmpeg / ffprobe binaries;
+* Add ability to overwrite the input / unsynced srt with the --overwrite-input flag;
