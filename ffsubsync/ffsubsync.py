@@ -8,10 +8,10 @@ import shutil
 import sys
 
 import numpy as np
-from .sklearn_shim import Pipeline
 
 from .aligners import FFTAligner, MaxScoreAligner, FailedToFindAlignmentException
 from .constants import *
+from .sklearn_shim import Pipeline
 from .speech_transformers import (
     VideoSpeechTransformer,
     DeserializeSpeechTransformer,
@@ -21,7 +21,6 @@ from .subtitle_parser import make_subtitle_parser
 from .subtitle_transformers import SubtitleMerger, SubtitleShifter
 from .version import __version__
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

@@ -4,6 +4,7 @@ ffmpeg-python
 future
 numpy>=1.12.0
 pysubs2
+rich
 six
 srt>=3.0.0
 tqdm

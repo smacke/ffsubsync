@@ -301,6 +301,8 @@ class VideoSpeechTransformer(TransformerMixin):
                     if not in_bytes:
                         break
                     newstuff = len(in_bytes) / float(bytes_per_frame) / self.frame_rate
+                    if simple_progress + newstuff > total_duration:
+                        newstuff = total_duration - simple_progress
                     simple_progress += newstuff
                     pbar.update(newstuff)
                     if self.vlc_mode and total_duration is not None:
