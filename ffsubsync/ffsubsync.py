@@ -39,6 +39,16 @@ def run(args):
         if args.srtin is None or args.srtout is None:
             logger.error('need to specify input and output srt files for test cases')
             return 1
+    if args.overwrite_input:
+        if args.srtin is None:
+            logger.error('need to specify input srt if --overwrite-input is specified since we cannot overwrite stdin')
+            return 1
+        if args.srtout is not None:
+            logger.error('overwrite input set but output file specified; refusing to run in case this was not intended')
+            return 1
+        args.srtout = args.srtin
+    if args.gui_mode and args.srtout is None:
+        args.srtout = '{}.synced.srt'.format(args.srtin[:-4])
     ref_format = args.reference[-3:]
     if args.merge_with_reference and ref_format not in SUBTITLE_EXTENSIONS:
         logger.error('merging synced output with reference only valid '
@@ -132,12 +142,8 @@ def run(args):
         out_subs = output_pipe.fit_transform(scale_step.subs_)
         if args.output_encoding != 'same':
             out_subs = out_subs.set_encoding(args.output_encoding)
-        if args.srtout is not None:
-            out_subs.write_file(args.srtout)
-        else:
-            outname = '{}.synced.srt'.format(args.srtin[:-4])
-            logger.info('writing output to {}'.format(outname))
-            out_subs.write_file(outname)
+        logger.info('writing output to {}'.format(args.srtout or 'stdout'))
+        out_subs.write_file(args.srtout)
     except FailedToFindAlignmentException as e:
         sync_was_successful = False
         logger.error(e)
@@ -195,6 +201,8 @@ def add_main_args_for_cli(parser):
 def add_cli_only_args(parser):
     parser.add_argument('-v', '--version', action='version',
                         version='%(prog)s {version}'.format(version=__version__))
+    parser.add_argument('--overwrite-input', action='store_true',
+                        help='If specified, will overwrite the input srt instead of writing the output to a new file.')
     parser.add_argument('--encoding', default=DEFAULT_ENCODING,
                         help='What encoding to use for reading input subtitles '
                              '(default=%s).' % DEFAULT_ENCODING)
