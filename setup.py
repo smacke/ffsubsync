@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-import os
 import platform
+
 from setuptools import setup, find_packages
+import versioneer
 
 
 def read_file(fname):
@@ -17,10 +17,10 @@ if platform.system() == 'Windows':
     requirements.remove('webrtcvad')
     requirements.append('webrtcvad-wheels')
 pkg_name = 'ffsubsync'
-exec(read_file(os.path.join(pkg_name, 'version.py')))
 setup(
     name=pkg_name,
-    version=__version__,  # noqa
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',
     description='Language-agnostic synchronization of subtitles with video.',

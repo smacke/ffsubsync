@@ -1,11 +1,19 @@
 # -*- coding: utf-8 -*- 
-__version__ = '0.4.3'
+from ._version import get_versions
+__version__ = get_versions()['version']
+del get_versions
 
 
 def make_version_tuple(vstr):
     if vstr[0] == 'v':
         vstr = vstr[1:]
-    return tuple(map(int, vstr.split('.')))
+    components = []
+    for component in vstr.split('.'):
+        try:
+            components.append(int(component))
+        except ValueError:
+            break
+    return tuple(components)
 
 
 def update_available():

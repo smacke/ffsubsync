@@ -199,7 +199,7 @@ def add_main_args_for_cli(parser):
 
 def add_cli_only_args(parser):
     parser.add_argument('-v', '--version', action='version',
-                        version='%(prog)s {version}'.format(version=__version__))
+                        version='{package} {version}'.format(package=__package__, version=__version__))
     parser.add_argument('--overwrite-input', action='store_true',
                         help='If specified, will overwrite the input srt instead of writing the output to a new file.')
     parser.add_argument('--encoding', default=DEFAULT_ENCODING,

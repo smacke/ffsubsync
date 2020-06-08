@@ -1,1 +1,3 @@
 include *.rst
+include versioneer.py
+include ffsubsync/_version.py

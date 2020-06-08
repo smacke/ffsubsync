@@ -143,3 +143,8 @@ History
 * Fix regression where stdout not used for default output;
 * Add ability to specify path to ffmpeg / ffprobe binaries;
 * Add ability to overwrite the input / unsynced srt with the --overwrite-input flag;
+
+0.4.4 (2020-06-08)
+------------------
+* Use rich formatting for Python >= 3.6;
+* Use versioneer to manage versions;

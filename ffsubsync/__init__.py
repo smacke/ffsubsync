@@ -19,4 +19,3 @@ except ImportError:
 
 from .version import __version__  # noqa
 from .ffsubsync import main  # noqa
-
