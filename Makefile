@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-.PHONY: clean dist deploy check test tests deps devdeps
+.PHONY: clean build bump deploy check test tests deps devdeps
 
 clean:
 	rm -rf dist/ build/ *.egg-info/
 
-dist: clean
+build: clean
 	python setup.py sdist bdist_wheel --universal
 
-deploy: dist
+bump:
+	./scripts/bump-version.py
+
+deploy: build
 	twine upload dist/*
 
 check:
