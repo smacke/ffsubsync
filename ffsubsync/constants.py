@@ -13,7 +13,7 @@ DEFAULT_SCALE_FACTOR = 1
 DEFAULT_VAD = 'subs_then_webrtc'
 DEFAULT_MAX_OFFSET_SECONDS = 600
 
-SUBTITLE_EXTENSIONS = ('srt', 'ass', 'ssa')
+SUBTITLE_EXTENSIONS = ('srt', 'ass', 'ssa', 'sub')
 
 GITHUB_DEV_USER = 'smacke'
 PROJECT_NAME = 'FFsubsync'

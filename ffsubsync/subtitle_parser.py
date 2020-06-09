@@ -80,13 +80,15 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
             subs = f.read()
         if self.encoding == 'infer':
             encodings_to_try = (cchardet.detect(subs)['encoding'],)
+            self.detected_encoding_ = encodings_to_try[0]
+            logger.info('detected encoding: %s' % self.detected_encoding_)
         exc = None
         for encoding in encodings_to_try:
             try:
                 decoded_subs = subs.decode(encoding, errors='replace').strip()
                 if self.sub_format == 'srt':
                     parsed_subs = srt.parse(decoded_subs)
-                elif self.sub_format in ('ass', 'ssa'):
+                elif self.sub_format in ('ass', 'ssa', 'sub'):
                     parsed_subs = pysubs2.SSAFile.from_string(decoded_subs)
                 else:
                     raise NotImplementedError('unsupported format: %s' % self.sub_format)
@@ -98,8 +100,9 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                     encoding=encoding
                 )
                 self.fit_fname = fname
-                self.detected_encoding_ = encoding
-                logger.info('detected encoding: %s' % self.detected_encoding_)
+                if len(encodings_to_try) > 1:
+                    self.detected_encoding_ = encoding
+                    logger.info('detected encoding: %s' % self.detected_encoding_)
                 return self
             except Exception as e:
                 exc = e

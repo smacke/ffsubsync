@@ -79,7 +79,7 @@ def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_en
     # context manager TemporaryDirectory not available on py2
     dirpath = tempfile.mkdtemp()
     try:
-        args.srtout = os.path.join(dirpath, 'test.srt')
+        args.srtout = os.path.join(dirpath, 'test' + os.path.splitext(args.srtin)[-1])
         assert ffsubsync.run(args) == 0
         if should_filecmp:
             assert filecmp.cmp(args.srtout, truth, shallow=False)

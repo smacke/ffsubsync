@@ -2,6 +2,7 @@
 import copy
 from datetime import timedelta
 import logging
+import os
 
 import pysubs2
 import srt
@@ -121,15 +122,17 @@ class GenericSubtitlesFile(object):
         )
 
     def write_file(self, fname):
+        # TODO: converter to go between self.subs_format and out_format
+        out_format = os.path.splitext(fname)[-1][1:]
         subs = list(self.gen_raw_resolved_subs())
-        if self.sub_format == 'srt':
+        if out_format == 'srt':
             to_write = srt.compose(subs)
-        elif self.sub_format in ('ssa', 'ass'):
+        elif out_format in ('ssa', 'ass'):
             ssaf = pysubs2.SSAFile()
             ssaf.events = subs
-            to_write = ssaf.to_string(self.sub_format)
+            to_write = ssaf.to_string(out_format)
         else:
-            raise NotImplementedError('unsupported format: %s' % self.sub_format)
+            raise NotImplementedError('unsupported output format: %s' % out_format)
 
         to_write = to_write.encode(self.encoding)
         if six.PY3:

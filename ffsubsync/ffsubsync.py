@@ -47,7 +47,7 @@ def run(args):
             return 1
         args.srtout = args.srtin
     if args.gui_mode and args.srtout is None:
-        args.srtout = '{}.synced.srt'.format(args.srtin[:-4])
+        args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin)[0])
     ref_format = args.reference[-3:]
     if args.merge_with_reference and ref_format not in SUBTITLE_EXTENSIONS:
         logger.error('merging synced output with reference only valid '
@@ -107,7 +107,7 @@ def run(args):
         if args.srtin is None:
             logger.info('unsynchronized subtitle file not specified; skipping synchronization')
             return retval
-    parser = make_subtitle_parser(fmt=args.srtin[-3:], caching=True, **args.__dict__)
+    parser = make_subtitle_parser(fmt=os.path.splitext(args.srtin)[-1][1:], caching=True, **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
         make_subtitle_speech_pipeline(
