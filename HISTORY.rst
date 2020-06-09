@@ -148,3 +148,8 @@ History
 ------------------
 * Use rich formatting for Python >= 3.6;
 * Use versioneer to manage versions;
+
+0.4.5 (2020-06-09)
+------------------
+* Allow MicroDVD input format;
+* Use output extension to determine output format;

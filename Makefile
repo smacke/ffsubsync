@@ -11,7 +11,7 @@ bump:
 	./scripts/bump-version.py
 
 deploy: build
-	twine upload dist/*
+	./scripts/deploy.sh
 
 check:
 	INTEGRATION=1 pytest
