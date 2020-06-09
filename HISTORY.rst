@@ -153,3 +153,7 @@ History
 ------------------
 * Allow MicroDVD input format;
 * Use output extension to determine output format;
+
+0.4.6 (2020-06-10)
+------------------
+* Bugfix for writing subs to stdout;

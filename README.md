@@ -40,15 +40,9 @@ pip install git+https://github.com/smacke/ffsubsync@latest
 
 Usage
 -----
-Both `subsync` and `ffsubsync` work as entrypoints:
+`ffs`, `subsync` and `ffsubsync` all work as entrypoints:
 ~~~
-ffsubsync video.mp4 -i unsynchronized.srt > synchronized.srt
-~~~
-
-or
-
-~~~
-ffsubsync video.mp4 -i unsynchronized.srt -o synchronized.srt
+ffs video.mp4 -i unsynchronized.srt -o synchronized.srt
 ~~~
 
 There may be occasions where you have a correctly synchronized srt file in a

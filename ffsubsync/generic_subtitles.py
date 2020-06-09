@@ -123,7 +123,10 @@ class GenericSubtitlesFile(object):
 
     def write_file(self, fname):
         # TODO: converter to go between self.subs_format and out_format
-        out_format = os.path.splitext(fname)[-1][1:]
+        if fname is None:
+            out_format = self._sub_format
+        else:
+            out_format = os.path.splitext(fname)[-1][1:]
         subs = list(self.gen_raw_resolved_subs())
         if out_format == 'srt':
             to_write = srt.compose(subs)
