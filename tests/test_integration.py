@@ -80,7 +80,7 @@ def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_en
     dirpath = tempfile.mkdtemp()
     try:
         args.srtout = os.path.join(dirpath, 'test' + os.path.splitext(args.srtin)[-1])
-        assert ffsubsync.run(args) == 0
+        assert ffsubsync.run(args)['retval'] == 0
         if should_filecmp:
             assert filecmp.cmp(args.srtout, truth, shallow=False)
         else:

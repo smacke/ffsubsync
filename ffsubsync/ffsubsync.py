@@ -31,20 +31,26 @@ def override(args, **kwargs):
 
 
 def run(args):
-    retval = 0
+    result = {'retval': 0,
+              'offset_seconds': None,
+              'framerate_scale_factor': None,
+              'sync_was_successful': None}
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
     if args.make_test_case and not args.gui_mode:  # this validation not necessary for gui mode
         if args.srtin is None or args.srtout is None:
             logger.error('need to specify input and output srt files for test cases')
-            return 1
+            result['retval'] = 1
+            return result
     if args.overwrite_input:
         if args.srtin is None:
             logger.error('need to specify input srt if --overwrite-input is specified since we cannot overwrite stdin')
-            return 1
+            result['retval'] = 1
+            return result
         if args.srtout is not None:
             logger.error('overwrite input set but output file specified; refusing to run in case this was not intended')
-            return 1
+            result['retval'] = 1
+            return result
         args.srtout = args.srtin
     if args.gui_mode and args.srtout is None:
         args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin)[0])
@@ -106,7 +112,7 @@ def run(args):
         logger.info('...done')
         if args.srtin is None:
             logger.info('unsynchronized subtitle file not specified; skipping synchronization')
-            return retval
+            return result
     parser = make_subtitle_parser(fmt=os.path.splitext(args.srtin)[-1][1:], caching=True, **args.__dict__)
     logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
@@ -146,6 +152,11 @@ def run(args):
     except FailedToFindAlignmentException as e:
         sync_was_successful = False
         logger.error(e)
+    else:
+        result['offset_seconds'] = offset_seconds
+        result['framerate_scale_factor'] = scale_step.scale_factor
+    finally:
+        result['sync_was_successful'] = sync_was_successful
     if args.make_test_case:
         if npy_savename is None:
             raise ValueError('need non-null npy_savename')
@@ -175,11 +186,11 @@ def run(args):
             else:
                 logger.error('failed to create test archive; no formats supported '
                              '(this should not happen)')
-                retval = 1
+                result['retval'] = 1
             logger.info('...done')
         finally:
             shutil.rmtree(tar_dir)
-    return retval
+    return result
 
 
 def add_main_args_for_cli(parser):
