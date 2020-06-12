@@ -268,7 +268,7 @@ def make_parser():
 def main():
     parser = make_parser()
     args = parser.parse_args()
-    return run(args)
+    return run(args)['retval']
 
 
 if __name__ == "__main__":
