@@ -2,7 +2,10 @@
 from datetime import timedelta
 import logging
 
-import cchardet
+try:
+    import cchardet
+except ImportError:
+    import chardet as cchardet
 import pysubs2
 from .sklearn_shim import TransformerMixin
 import srt
