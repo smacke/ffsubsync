@@ -206,6 +206,13 @@ def add_main_args_for_cli(parser):
                         help='If specified, serialize reference speech to a numpy array, '
                              'and create an archive with input/output subtitles '
                              'and serialized speech.')
+    parser.add_argument(
+        '--reference-stream', '--refstream', '--reference-track', '--reftrack',
+        default=None,
+        help='Which stream/track in the video file to use as reference, '
+             'formatted according to ffmpeg conventions. For example, s:0 '
+             'uses the first subtitle track; a:3 would use the third audio track.'
+    )
 
 
 def add_cli_only_args(parser):
@@ -243,13 +250,6 @@ def add_cli_only_args(parser):
                              'mismatch between reference and subtitles.')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
-    parser.add_argument(
-        '--reference-stream', '--refstream', '--reference-track', '--reftrack',
-        default=None,
-        help='Which stream/track in the video file to use as reference, '
-             'formatted according to ffmpeg conventions. For example, s:0 '
-             'uses the first subtitle track; a:3 would use the third audio track.'
-    )
     parser.add_argument(
         '--ffmpeg-path', '--ffmpegpath', default=None,
         help='Where to look for ffmpeg and ffprobe. Uses the system PATH by default.'
