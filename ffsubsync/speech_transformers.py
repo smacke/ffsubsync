@@ -83,7 +83,7 @@ def _ffmpeg_bin_path(bin_name, gui_mode, ffmpeg_resources_path=None):
         resource_path = os.environ[SUBSYNC_RESOURCES_ENV_MAGIC]
         if len(resource_path) > 0:
             return os.path.join(resource_path, 'ffmpeg-bin', bin_name)
-    except KeyError as e:
+    except KeyError:
         if gui_mode:
             logger.info("Couldn't find resource path; falling back to searching system path")
     return bin_name

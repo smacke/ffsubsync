@@ -19,7 +19,7 @@ from .speech_transformers import (
 )
 from .subtitle_parser import make_subtitle_parser
 from .subtitle_transformers import SubtitleMerger, SubtitleShifter
-from .version import __version__
+from .version import get_version
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +217,7 @@ def add_main_args_for_cli(parser):
 
 def add_cli_only_args(parser):
     parser.add_argument('-v', '--version', action='version',
-                        version='{package} {version}'.format(package=__package__, version=__version__))
+                        version='{package} {version}'.format(package=__package__, version=get_version()))
     parser.add_argument('--overwrite-input', action='store_true',
                         help='If specified, will overwrite the input srt instead of writing the output to a new file.')
     parser.add_argument('--encoding', default=DEFAULT_ENCODING,

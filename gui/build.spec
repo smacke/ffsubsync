@@ -14,6 +14,7 @@ if platform.system() == 'Windows':
 ffmpeg_bin = os.path.join(root, 'resources/ffmpeg-bin')
 datas = [(os.path.join(root, 'resources/img/program_icon.png'), './img')]
 datas.append((os.path.join(root, 'resources/img/config_icon.png'), './img'))
+datas.append((os.path.join(root, '__version__'), '.'))
 if platform.system() == 'Darwin':
     ffmpeg_bin = os.path.join(ffmpeg_bin, 'macos')
 elif platform.system() == 'Windows':
@@ -53,7 +54,7 @@ exe = EXE(pyz,
           upx=True,
           console=False,
           windowed=True,
-          #icon=os.path.join(gooey_root, 'images', 'program_icon.ico'),
+          icon=os.path.join(root, 'resources', 'img', 'program_icon.ico')
           )
 
 

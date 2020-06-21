@@ -1,7 +1,17 @@
-# -*- coding: utf-8 -*- 
+# -*- coding: utf-8 -*-
+import os
+from .constants import SUBSYNC_RESOURCES_ENV_MAGIC
 from ._version import get_versions
 __version__ = get_versions()['version']
 del get_versions
+
+
+def get_version():
+    if 'unknown' in __version__.lower():
+        with open(os.path.join(os.environ[SUBSYNC_RESOURCES_ENV_MAGIC], '__version__')) as f:
+            return f.read().strip()
+    else:
+        return __version__
 
 
 def make_version_tuple(vstr=None):
@@ -31,4 +41,4 @@ def update_available():
         return False
     if not resp.ok:
         return False
-    return make_version_tuple(__version__) < make_version_tuple(latest_vstr)
+    return make_version_tuple(get_version()) < make_version_tuple(latest_vstr)
