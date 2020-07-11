@@ -5,12 +5,14 @@ from datetime import datetime
 import logging
 import os
 import shutil
+import subprocess
 import sys
 
 import numpy as np
 
 from .aligners import FFTAligner, MaxScoreAligner, FailedToFindAlignmentException
 from .constants import *
+from .ffmpeg_utils import ffmpeg_bin_path
 from .sklearn_shim import Pipeline
 from .speech_transformers import (
     VideoSpeechTransformer,
@@ -30,104 +32,51 @@ def override(args, **kwargs):
     return args_dict
 
 
-def run(args):
-    result = {'retval': 0,
-              'offset_seconds': None,
-              'framerate_scale_factor': None,
-              'sync_was_successful': None}
-    if args.vlc_mode:
-        logger.setLevel(logging.CRITICAL)
-    if args.make_test_case and not args.gui_mode:  # this validation not necessary for gui mode
-        if args.srtin is None or args.srtout is None:
-            logger.error('need to specify input and output srt files for test cases')
-            result['retval'] = 1
-            return result
-    if args.overwrite_input:
-        if args.srtin is None:
-            logger.error('need to specify input srt if --overwrite-input is specified since we cannot overwrite stdin')
-            result['retval'] = 1
-            return result
-        if args.srtout is not None:
-            logger.error('overwrite input set but output file specified; refusing to run in case this was not intended')
-            result['retval'] = 1
-            return result
-        args.srtout = args.srtin
-    if args.gui_mode and args.srtout is None:
-        args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin)[0])
-    ref_format = args.reference[-3:]
-    if args.merge_with_reference and ref_format not in SUBTITLE_EXTENSIONS:
-        logger.error('merging synced output with reference only valid '
-                     'when reference composed of subtitles')
-        return 1
-    if args.make_test_case:
-        handler = logging.FileHandler('ffsubsync.log')
-        logger.addHandler(handler)
-    if ref_format in SUBTITLE_EXTENSIONS:
-        if args.vad is not None:
-            logger.warning('Vad specified, but reference was not a movie')
-        reference_pipe = make_subtitle_speech_pipeline(
-            fmt=ref_format,
-            **override(
-                args,
-                encoding=args.reference_encoding or DEFAULT_ENCODING
-            )
-        )
-    elif ref_format in ('npy', 'npz'):
-        if args.vad is not None:
-            logger.warning('Vad specified, but reference was not a movie')
-        reference_pipe = Pipeline([
-            ('deserialize', DeserializeSpeechTransformer())
-        ])
-    else:
-        vad = args.vad or DEFAULT_VAD
-        if args.reference_encoding is not None:
-            logger.warning('Reference srt encoding specified, but reference was a video file')
-        ref_stream = args.reference_stream
-        if ref_stream is not None and not ref_stream.startswith('0:'):
-            ref_stream = '0:' + ref_stream
-        reference_pipe = Pipeline([
-            ('speech_extract', VideoSpeechTransformer(vad=vad,
-                                                      sample_rate=SAMPLE_RATE,
-                                                      frame_rate=args.frame_rate,
-                                                      start_seconds=args.start_seconds,
-                                                      ffmpeg_path=args.ffmpeg_path,
-                                                      ref_stream=ref_stream,
-                                                      vlc_mode=args.vlc_mode,
-                                                      gui_mode=args.gui_mode))
-        ])
-    if args.no_fix_framerate:
-        framerate_ratios = [1.]
-    else:
-        framerate_ratios = np.concatenate([
-            [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
-        ])
-    logger.info("extracting speech segments from reference '%s'...", args.reference)
-    reference_pipe.fit(args.reference)
-    logger.info('...done')
-    npy_savename = None
-    if args.make_test_case or args.serialize_speech:
-        logger.info('serializing speech...')
-        npy_savename = os.path.splitext(args.reference)[0] + '.npz'
-        np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
-        logger.info('...done')
-        if args.srtin is None:
-            logger.info('unsynchronized subtitle file not specified; skipping synchronization')
-            return result
-    parser = make_subtitle_parser(fmt=os.path.splitext(args.srtin)[-1][1:], caching=True, **args.__dict__)
-    logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
-    srt_pipes = [
-        make_subtitle_speech_pipeline(
-            **override(args, scale_factor=scale_factor, parser=parser)
-        ).fit(args.srtin)
-        for scale_factor in framerate_ratios
-    ]
-    logger.info('...done')
-    logger.info('computing alignments...')
-    max_offset_seconds = args.max_offset_seconds
+def _ref_format(ref_fname):
+    return ref_fname[-3:]
+
+
+def make_test_case(args, npy_savename, sync_was_successful):
+    if npy_savename is None:
+        raise ValueError('need non-null npy_savename')
+    tar_dir = '{}.{}'.format(
+        args.reference,
+        datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+    )
+    logger.info('creating test archive {}.tar.gz...'.format(tar_dir))
+    os.mkdir(tar_dir)
     try:
-        sync_was_successful = True
+        shutil.move('ffsubsync.log', tar_dir)
+        shutil.copy(args.srtin, tar_dir)
+        if sync_was_successful:
+            shutil.move(args.srtout, tar_dir)
+        if _ref_format(args.reference) in SUBTITLE_EXTENSIONS:
+            shutil.copy(args.reference, tar_dir)
+        elif args.serialize_speech or args.reference == npy_savename:
+            shutil.copy(npy_savename, tar_dir)
+        else:
+            shutil.move(npy_savename, tar_dir)
+        supported_formats = set(list(zip(*shutil.get_archive_formats()))[0])
+        preferred_formats = ['gztar', 'bztar', 'xztar', 'zip', 'tar']
+        for archive_format in preferred_formats:
+            if archive_format in supported_formats:
+                shutil.make_archive(tar_dir, 'gztar', os.curdir, tar_dir)
+                break
+        else:
+            logger.error('failed to create test archive; no formats supported '
+                         '(this should not happen)')
+            return 1
+        logger.info('...done')
+    finally:
+        shutil.rmtree(tar_dir)
+    return 0
+
+
+def try_sync(args, reference_pipe, srt_pipes, result):
+    sync_was_successful = True
+    try:
         offset_samples, best_srt_pipe = MaxScoreAligner(
-            FFTAligner, SAMPLE_RATE, max_offset_seconds
+            FFTAligner, SAMPLE_RATE, args.max_offset_seconds
         ).fit_transform(
             reference_pipe.transform(args.reference),
             srt_pipes,
@@ -157,39 +106,165 @@ def run(args):
         result['framerate_scale_factor'] = scale_step.scale_factor
     finally:
         result['sync_was_successful'] = sync_was_successful
-    if args.make_test_case:
-        if npy_savename is None:
-            raise ValueError('need non-null npy_savename')
-        tar_dir = '{}.{}'.format(
-            args.reference,
-            datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+        return sync_was_successful
+
+
+def make_reference_pipe(args):
+    ref_format = _ref_format(args.reference)
+    if ref_format in SUBTITLE_EXTENSIONS:
+        if args.vad is not None:
+            logger.warning('Vad specified, but reference was not a movie')
+        return make_subtitle_speech_pipeline(
+            fmt=ref_format,
+            **override(
+                args,
+                encoding=args.reference_encoding or DEFAULT_ENCODING
+            )
         )
-        logger.info('creating test archive {}.tar.gz...'.format(tar_dir))
-        os.mkdir(tar_dir)
-        try:
-            shutil.move('ffsubsync.log', tar_dir)
-            shutil.copy(args.srtin, tar_dir)
-            if sync_was_successful:
-                shutil.move(args.srtout, tar_dir)
-            if ref_format in SUBTITLE_EXTENSIONS:
-                shutil.copy(args.reference, tar_dir)
-            elif args.serialize_speech or args.reference == npy_savename:
-                shutil.copy(npy_savename, tar_dir)
-            else:
-                shutil.move(npy_savename, tar_dir)
-            supported_formats = set(list(zip(*shutil.get_archive_formats()))[0])
-            preferred_formats = ['gztar', 'bztar', 'xztar', 'zip', 'tar']
-            for archive_format in preferred_formats:
-                if archive_format in supported_formats:
-                    shutil.make_archive(tar_dir, 'gztar', os.curdir, tar_dir)
-                    break
-            else:
-                logger.error('failed to create test archive; no formats supported '
-                             '(this should not happen)')
-                result['retval'] = 1
-            logger.info('...done')
-        finally:
-            shutil.rmtree(tar_dir)
+    elif ref_format in ('npy', 'npz'):
+        if args.vad is not None:
+            logger.warning('Vad specified, but reference was not a movie')
+        return Pipeline([
+            ('deserialize', DeserializeSpeechTransformer())
+        ])
+    else:
+        vad = args.vad or DEFAULT_VAD
+        if args.reference_encoding is not None:
+            logger.warning('Reference srt encoding specified, but reference was a video file')
+        ref_stream = args.reference_stream
+        if ref_stream is not None and not ref_stream.startswith('0:'):
+            ref_stream = '0:' + ref_stream
+        return Pipeline([
+            ('speech_extract', VideoSpeechTransformer(vad=vad,
+                                                      sample_rate=SAMPLE_RATE,
+                                                      frame_rate=args.frame_rate,
+                                                      start_seconds=args.start_seconds,
+                                                      ffmpeg_path=args.ffmpeg_path,
+                                                      ref_stream=ref_stream,
+                                                      vlc_mode=args.vlc_mode,
+                                                      gui_mode=args.gui_mode))
+        ])
+
+
+def make_srt_pipes(args):
+    if args.no_fix_framerate:
+        framerate_ratios = [1.]
+    else:
+        framerate_ratios = np.concatenate([
+            [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
+        ])
+    parser = make_subtitle_parser(fmt=os.path.splitext(args.srtin)[-1][1:], caching=True, **args.__dict__)
+    logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
+    srt_pipes = [
+        make_subtitle_speech_pipeline(
+            **override(args, scale_factor=scale_factor, parser=parser)
+        ).fit(args.srtin)
+        for scale_factor in framerate_ratios
+    ]
+    logger.info('...done')
+    logger.info('computing alignments...')
+    return srt_pipes
+
+
+def extract_subtitles_from_reference(args):
+    stream = args.extract_subs_from_stream
+    if not stream.startswith('0:s:'):
+        stream = '0:s:{}'.format(stream)
+    elif not stream.startswith('0:') and stream.startswith('s:'):
+        stream = '0:{}'.format(stream)
+    if not stream.startswith('0:s:'):
+        logger.error('invalid stream for subtitle extraction: %s', args.extract_subs_from_stream)
+    ffmpeg_args = [ffmpeg_bin_path('ffmpeg', args.gui_mode, ffmpeg_resources_path=args.ffmpeg_path)]
+    ffmpeg_args.extend([
+        '-loglevel', 'fatal',
+        '-nostdin',
+        '-i', args.reference,
+        '-map', '{}'.format(stream),
+        '-f', 'srt',
+    ])
+    if args.srtout is None:
+        ffmpeg_args.append('-')
+    else:
+        ffmpeg_args.append(args.srtout)
+    logger.info('attempting to extract subtitles to {} ...'.format('stdout' if args.srtout is None else args.srtout))
+    retcode = subprocess.call(ffmpeg_args)
+    if retcode == 0:
+        logger.info('...done')
+    else:
+        logger.error('ffmpeg unable to extract subtitles from reference; return code %d', retcode)
+    return retcode
+
+
+def validate_args(args):
+    if args.vlc_mode:
+        logger.setLevel(logging.CRITICAL)
+    if args.make_test_case and not args.gui_mode:  # this validation not necessary for gui mode
+        if args.srtin is None or args.srtout is None:
+            raise ValueError('need to specify input and output srt files for test cases')
+    if args.overwrite_input:
+        if args.extract_subs_from_stream is not None:
+            raise ValueError('input overwriting not allowed for extracting subtitles from referece')
+        if args.srtin is None:
+            raise ValueError(
+                'need to specify input srt if --overwrite-input is specified since we cannot overwrite stdin'
+            )
+        if args.srtout is not None:
+            raise ValueError(
+                'overwrite input set but output file specified; refusing to run in case this was not intended'
+            )
+    if args.extract_subs_from_stream is not None:
+        if args.make_test_case:
+            raise ValueError('test case is for sync and not subtitle extraction')
+        if args.srtin is not None:
+            raise ValueError('stream specified for reference subtitle extraction; -i flag for sync input not allowed')
+
+
+def run(args):
+    result = {
+        'retval': 0,
+        'offset_seconds': None,
+        'framerate_scale_factor': None,
+        'sync_was_successful': None
+    }
+    try:
+        validate_args(args)
+    except ValueError as e:
+        logger.error(e)
+        result['retval'] = 1
+        return result
+    if args.overwrite_input:
+        args.srtout = args.srtin
+    if args.gui_mode and args.srtout is None:
+        args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin)[0])
+    ref_format = _ref_format(args.reference)
+    if args.merge_with_reference and ref_format not in SUBTITLE_EXTENSIONS:
+        logger.error('merging synced output with reference only valid '
+                     'when reference composed of subtitles')
+        result['retval'] = 1
+        return result
+    if args.make_test_case:
+        handler = logging.FileHandler('ffsubsync.log')
+        logger.addHandler(handler)
+    if args.extract_subs_from_stream is not None:
+        result['retval'] = extract_subtitles_from_reference(args)
+        return result
+    reference_pipe = make_reference_pipe(args)
+    logger.info("extracting speech segments from reference '%s'...", args.reference)
+    reference_pipe.fit(args.reference)
+    logger.info('...done')
+    npy_savename = None
+    if args.make_test_case or args.serialize_speech:
+        logger.info('serializing speech...')
+        npy_savename = os.path.splitext(args.reference)[0] + '.npz'
+        np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
+        logger.info('...done')
+        if args.srtin is None:
+            logger.info('unsynchronized subtitle file not specified; skipping synchronization')
+            return result
+    srt_pipes = make_srt_pipes(args)
+    sync_was_successful = try_sync(args, reference_pipe, srt_pipes, result)
+    if args.make_test_case:
+        result['retval'] += make_test_case(args, npy_savename, sync_was_successful)
     return result
 
 
@@ -250,6 +325,9 @@ def add_cli_only_args(parser):
                              'mismatch between reference and subtitles.')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
+    parser.add_argument('--extract-subs-from-stream', default=None,
+                        help='If specified, do not attempt sync; instead, just extract subtitles'
+                             ' from the specified stream using the reference.')
     parser.add_argument(
         '--ffmpeg-path', '--ffmpegpath', default=None,
         help='Where to look for ffmpeg and ffprobe. Uses the system PATH by default.'
