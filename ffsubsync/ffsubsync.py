@@ -75,6 +75,11 @@ def make_test_case(args, npy_savename, sync_was_successful):
 def try_sync(args, reference_pipe, srt_pipes, result):
     sync_was_successful = True
     try:
+        logger.info('extracting speech segments from subtitles file %s...', args.srtin)
+        for srt_pipe in srt_pipes:
+            srt_pipe.fit(args.srtin)
+        logger.info('...done')
+        logger.info('computing alignments...')
         offset_samples, best_srt_pipe = MaxScoreAligner(
             FFTAligner, SAMPLE_RATE, args.max_offset_seconds
         ).fit_transform(
@@ -154,15 +159,12 @@ def make_srt_pipes(args):
             [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
         ])
     parser = make_subtitle_parser(fmt=os.path.splitext(args.srtin)[-1][1:], caching=True, **args.__dict__)
-    logger.info("extracting speech segments from subtitles '%s'...", args.srtin)
     srt_pipes = [
         make_subtitle_speech_pipeline(
             **override(args, scale_factor=scale_factor, parser=parser)
-        ).fit(args.srtin)
+        )
         for scale_factor in framerate_ratios
     ]
-    logger.info('...done')
-    logger.info('computing alignments...')
     return srt_pipes
 
 
@@ -176,8 +178,9 @@ def extract_subtitles_from_reference(args):
         logger.error('invalid stream for subtitle extraction: %s', args.extract_subs_from_stream)
     ffmpeg_args = [ffmpeg_bin_path('ffmpeg', args.gui_mode, ffmpeg_resources_path=args.ffmpeg_path)]
     ffmpeg_args.extend([
-        '-loglevel', 'fatal',
+        '-y',
         '-nostdin',
+        '-loglevel', 'fatal',
         '-i', args.reference,
         '-map', '{}'.format(stream),
         '-f', 'srt',
