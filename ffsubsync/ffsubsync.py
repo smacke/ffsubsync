@@ -206,7 +206,7 @@ def validate_args(args):
             raise ValueError('need to specify input and output srt files for test cases')
     if args.overwrite_input:
         if args.extract_subs_from_stream is not None:
-            raise ValueError('input overwriting not allowed for extracting subtitles from referece')
+            raise ValueError('input overwriting not allowed for extracting subtitles from reference')
         if args.srtin is None:
             raise ValueError(
                 'need to specify input srt if --overwrite-input is specified since we cannot overwrite stdin'
@@ -220,6 +220,19 @@ def validate_args(args):
             raise ValueError('test case is for sync and not subtitle extraction')
         if args.srtin is not None:
             raise ValueError('stream specified for reference subtitle extraction; -i flag for sync input not allowed')
+
+
+def validate_file_permissions(args):
+    if not os.access(args.reference, os.R_OK):
+        raise ValueError('unable to read reference %s (try checking permissions)' % args.reference)
+    if not os.access(args.srtin, os.R_OK):
+        raise ValueError('unable to read input subtitles %s (try checking permissions)' % args.srtin)
+    if os.path.exists(args.srtout) and not os.access(args.srtout, os.W_OK):
+        raise ValueError('unable to write output subtitles %s (try checking permissions)' % args.srtout)
+    if args.make_test_case or args.serialize_speech:
+        npy_savename = os.path.splitext(args.reference)[0] + '.npz'
+        if os.path.exists(npy_savename) and not os.access(npy_savename, os.W_OK):
+            raise ValueError('unable to write test case file archive %s (try checking permissions)' % npy_savename)
 
 
 def run(args):
@@ -239,6 +252,12 @@ def run(args):
         args.srtout = args.srtin
     if args.gui_mode and args.srtout is None:
         args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin)[0])
+    try:
+        validate_file_permissions(args)
+    except ValueError as e:
+        logger.error(e)
+        result['retval'] = 1
+        return result
     ref_format = _ref_format(args.reference)
     if args.merge_with_reference and ref_format not in SUBTITLE_EXTENSIONS:
         logger.error('merging synced output with reference only valid '
