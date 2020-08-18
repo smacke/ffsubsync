@@ -41,7 +41,7 @@ def make_test_case(args, npy_savename, sync_was_successful):
         raise ValueError('need non-null npy_savename')
     tar_dir = '{}.{}'.format(
         args.reference,
-        datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+        datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     )
     logger.info('creating test archive {}.tar.gz...'.format(tar_dir))
     os.mkdir(tar_dir)
