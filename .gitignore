@@ -4,3 +4,4 @@ build
 dist
 *.egg-info
 .vim
+__version__

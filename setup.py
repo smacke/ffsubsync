@@ -1,9 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import os
 import platform
 
 from setuptools import setup, find_packages
 import versioneer
+
+pkg_name = 'ffsubsync'
+
+__version__ = versioneer.get_version()
+if 'unknown' in __version__.lower():
+    with open(os.path.join(pkg_name, '__version__')) as f:
+        __version__ = f.read().strip()
 
 
 def read_file(fname):
@@ -16,10 +24,9 @@ requirements = read_file('requirements.txt').strip().split()
 if platform.system() == 'Windows':
     requirements.remove('webrtcvad')
     requirements.append('webrtcvad-wheels')
-pkg_name = 'ffsubsync'
 setup(
     name=pkg_name,
-    version=versioneer.get_version(),
+    version=__version__,
     cmdclass=versioneer.get_cmdclass(),
     author='Stephen Macke',
     author_email='stephen.macke@gmail.com',

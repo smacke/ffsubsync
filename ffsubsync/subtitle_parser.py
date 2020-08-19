@@ -3,9 +3,9 @@ from datetime import timedelta
 import logging
 
 try:
-    import cchardet
+    import cchardet as chardet
 except ImportError:
-    import chardet as cchardet
+    import chardet
 import pysubs2
 from .sklearn_shim import TransformerMixin
 import srt
@@ -82,7 +82,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
         with open_file(fname, 'rb') as f:
             subs = f.read()
         if self.encoding == 'infer':
-            encodings_to_try = (cchardet.detect(subs)['encoding'],)
+            encodings_to_try = (chardet.detect(subs)['encoding'],)
             self.detected_encoding_ = encodings_to_try[0]
             logger.info('detected encoding: %s' % self.detected_encoding_)
         exc = None

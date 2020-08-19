@@ -1,4 +1,5 @@
 argparse
+auditok
 cchardet
 ffmpeg-python
 future

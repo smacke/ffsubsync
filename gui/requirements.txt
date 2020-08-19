@@ -1,4 +1,3 @@
 gooey
-pyinstaller>=3.6; sys_platform == 'darwin'
-pyinstaller==3.5; sys_platform == 'win32'
+pyinstaller>=3.6
 requests
