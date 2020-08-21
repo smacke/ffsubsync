@@ -49,7 +49,7 @@ def make_test_case(args, npy_savename, sync_was_successful):
         log_path = 'ffsubsync.log'
         if args.log_dir_path and os.path.isdir(args.log_dir_path):
             log_path = os.path.join(args.log_dir_path, log_path)
-        shutil.move(log_path, tar_dir)
+        shutil.copy(log_path, tar_dir)
         shutil.copy(args.srtin, tar_dir)
         if sync_was_successful:
             shutil.move(args.srtout, tar_dir)
