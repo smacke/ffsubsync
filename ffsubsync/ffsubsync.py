@@ -46,7 +46,10 @@ def make_test_case(args, npy_savename, sync_was_successful):
     logger.info('creating test archive {}.tar.gz...'.format(tar_dir))
     os.mkdir(tar_dir)
     try:
-        shutil.move('ffsubsync.log', tar_dir)
+        log_path = 'ffsubsync.log'
+        if args.log_dir_path and os.path.isdir(args.log_dir_path):
+            log_path = os.path.join(args.log_dir_path, log_path)
+        shutil.move(log_path, tar_dir)
         shutil.copy(args.srtin, tar_dir)
         if sync_was_successful:
             shutil.move(args.srtout, tar_dir)
@@ -265,7 +268,10 @@ def run(args):
         result['retval'] = 1
         return result
     if args.make_test_case:
-        handler = logging.FileHandler('ffsubsync.log')
+        log_path = 'ffsubsync.log'
+        if args.log_dir_path and os.path.isdir(args.log_dir_path):
+            log_path = os.path.join(args.log_dir_path, log_path)
+        handler = logging.FileHandler(log_path)
         logger.addHandler(handler)
     if args.extract_subs_from_stream is not None:
         result['retval'] = extract_subtitles_from_reference(args)
@@ -354,6 +360,8 @@ def add_cli_only_args(parser):
         '--ffmpeg-path', '--ffmpegpath', default=None,
         help='Where to look for ffmpeg and ffprobe. Uses the system PATH by default.'
     )
+    parser.add_argument('--log-dir-path', default=None, help='Where to save ffsubsync.log file (must be an existing '
+                        'directory).')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
 
