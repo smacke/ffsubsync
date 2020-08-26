@@ -267,12 +267,13 @@ def run(args):
                      'when reference composed of subtitles')
         result['retval'] = 1
         return result
+    log_handler = None
     if args.make_test_case:
         log_path = 'ffsubsync.log'
         if args.log_dir_path and os.path.isdir(args.log_dir_path):
             log_path = os.path.join(args.log_dir_path, log_path)
-        handler = logging.FileHandler(log_path)
-        logger.addHandler(handler)
+        log_handler = logging.FileHandler(log_path)
+        logger.addHandler(log_handler)
     if args.extract_subs_from_stream is not None:
         result['retval'] = extract_subtitles_from_reference(args)
         return result
@@ -291,10 +292,14 @@ def run(args):
             return result
     srt_pipes = make_srt_pipes(args)
     sync_was_successful = try_sync(args, reference_pipe, srt_pipes, result)
-    if args.make_test_case:
-        handler.close()
-        logger.removeHandler(handler)
-        result['retval'] += make_test_case(args, npy_savename, sync_was_successful)
+    if log_handler is not None:
+        assert args.make_test_case
+        log_handler.close()
+        logger.removeHandler(log_handler)
+        try:
+            result['retval'] += make_test_case(args, npy_savename, sync_was_successful)
+        finally:
+            os.remove(log_path)
     return result
 
 
