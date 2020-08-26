@@ -268,6 +268,7 @@ def run(args):
         result['retval'] = 1
         return result
     log_handler = None
+    log_path = None
     if args.make_test_case:
         log_path = 'ffsubsync.log'
         if args.log_dir_path and os.path.isdir(args.log_dir_path):
@@ -292,7 +293,7 @@ def run(args):
             return result
     srt_pipes = make_srt_pipes(args)
     sync_was_successful = try_sync(args, reference_pipe, srt_pipes, result)
-    if log_handler is not None:
+    if log_handler is not None and log_path is not None:
         assert args.make_test_case
         log_handler.close()
         logger.removeHandler(log_handler)
