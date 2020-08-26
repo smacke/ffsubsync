@@ -65,10 +65,10 @@ def make_test_case(args, npy_savename, sync_was_successful):
             if archive_format in supported_formats:
                 shutil.make_archive(tar_dir, archive_format, os.curdir, tar_dir)
                 break
-        else:
-            logger.error('failed to create test archive; no formats supported '
-                         '(this should not happen)')
-            return 1
+            else:
+                logger.error('failed to create test archive; no formats supported '
+                             '(this should not happen)')
+                return 1
         logger.info('...done')
     finally:
         shutil.rmtree(tar_dir)
@@ -292,6 +292,8 @@ def run(args):
     srt_pipes = make_srt_pipes(args)
     sync_was_successful = try_sync(args, reference_pipe, srt_pipes, result)
     if args.make_test_case:
+        handler.close()
+        logger.removeHandler(handler)
         result['retval'] += make_test_case(args, npy_savename, sync_was_successful)
     return result
 
