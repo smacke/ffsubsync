@@ -2,4 +2,5 @@
 flake8
 pytest
 pyyaml;python_version!="3.4"
+twine
 versioneer
