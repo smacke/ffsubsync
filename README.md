@@ -18,8 +18,7 @@ Turn this:                       |  Into this:
 Helping Development
 -------------------
 At the request of some, you can now help cover my coffee expenses using the
-Github Sponsors button at the top (recurring monthly payments), or using the below
-Paypal Donate button (one-time payment):
+Github Sponsors button at the top, or using the below Paypal Donate button:
 
 [![Donate](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=XJC5ANLMYECJE)
 
@@ -57,6 +56,30 @@ ffsubsync reference.srt -i unsynchronized.srt -o synchronized.srt
 
 `ffsubsync` uses the file extension to decide whether to perform voice activity
 detection on the audio or to directly extract speech from an srt file.
+
+Sync Issues
+-----------
+If the sync fails, there are a few recourses available.  The best one to try
+first is to specify `--vad=auditok` as a command line option, since sometimes
+[auditok](https://github.com/amsehili/auditok) works well with ffsubsync in the
+case of of muffled or otherwise low-quality audio.  Auditok does not
+specifically detect voice, but instead detects all audio; this property of its
+implementation leads to suboptimal syncing behavior when a proper VAD can work
+well, but can be effective in some cases.
+
+The next step is to try different values for `--max-offset-seconds`. By default
+ffsubsync runs with `--max-offset-seconds=600`, since subititles are unlikely
+to be offset by more than 10 minutes in practice, and enforcing this constraint
+typically leads to a better outcome. There may be some rare cases in which
+subtitles are more egregiously out of sync and where increasing this value can
+help.
+
+If the sync still fails, consider trying one of the following similar tools:
+- [sc0ty/subsync](https://github.com/sc0ty/subsync): does speech-to-text and looks for matching word morphemes
+- [kaegi/alass](https://github.com/kaegi/alass): rust-based subtitle synchronizer with a fancy dynamic programming algorithm
+- [tympanix/subsync](https://github.com/tympanix/subsync): neural net based approach that optimizes directly for alignment when performing speech detection
+- [oseiskar/autosubsync](https://github.com/oseiskar/autosubsync): performs speech detection with bespoke spectrogram + logistic regression
+- [pums974/srtsync](https://github.com/pums974/srtsync): similar approach to ffsubsync (WebRTC's VAD + FFT to maximize signal cross correlation)
 
 Speed
 -----

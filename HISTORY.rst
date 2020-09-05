@@ -157,3 +157,7 @@ History
 0.4.6 (2020-06-10)
 ------------------
 * Bugfix for writing subs to stdout;
+
+0.4.7 (2020-09-05)
+------------------
+* Misc bugfixes and stability improvements;
