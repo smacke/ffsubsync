@@ -63,8 +63,8 @@ If the sync fails, there are a few recourses available.  The best one to try
 first is to specify `--vad=auditok` as a command line option, since sometimes
 [auditok](https://github.com/amsehili/auditok) works well with ffsubsync in the
 case of of muffled or otherwise low-quality audio.  Auditok does not
-specifically detect voice, but instead detects all audio; this property of its
-implementation leads to suboptimal syncing behavior when a proper VAD can work
+specifically detect voice, but instead detects all audio; this property can
+yield suboptimal syncing behavior when a proper VAD can work
 well, but can be effective in some cases.
 
 The next step is to try different values for `--max-offset-seconds`. By default
