@@ -21,9 +21,6 @@ def read_file(fname):
 
 history = read_file('HISTORY.rst')
 requirements = read_file('requirements.txt').strip().split()
-if platform.system() == 'Windows':
-    requirements.remove('webrtcvad')
-    requirements.append('webrtcvad-wheels')
 setup(
     name=pkg_name,
     version=__version__,
