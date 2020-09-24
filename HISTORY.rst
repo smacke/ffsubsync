@@ -161,3 +161,7 @@ History
 0.4.7 (2020-09-05)
 ------------------
 * Misc bugfixes and stability improvements;
+
+0.4.8 (2020-09-22)
+------------------
+* Use webrtcvad-wheels on Windows to eliminate dependency on compiler;
