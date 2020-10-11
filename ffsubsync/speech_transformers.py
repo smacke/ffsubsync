@@ -42,15 +42,20 @@ def make_subtitle_speech_pipeline(
     assert parser.encoding == encoding
     assert parser.max_subtitle_seconds == max_subtitle_seconds
     assert parser.start_seconds == start_seconds
-    return Pipeline([
-        ('parse', parser),
-        ('scale', SubtitleScaler(scale_factor)),
-        ('speech_extract', SubtitleSpeechTransformer(
-            sample_rate=SAMPLE_RATE,
-            start_seconds=start_seconds,
-            framerate_ratio=scale_factor,
-        ))
-    ])
+    def subpipe_maker(framerate_ratio):
+        return Pipeline([
+            ('parse', parser),
+            ('scale', SubtitleScaler(framerate_ratio)),
+            ('speech_extract', SubtitleSpeechTransformer(
+                sample_rate=SAMPLE_RATE,
+                start_seconds=start_seconds,
+                framerate_ratio=framerate_ratio,
+            ))
+        ])
+    if scale_factor is None:
+        return subpipe_maker
+    else:
+        return subpipe_maker(scale_factor)
 
 
 def _make_auditok_detector(sample_rate, frame_rate):

@@ -165,3 +165,10 @@ History
 0.4.8 (2020-09-22)
 ------------------
 * Use webrtcvad-wheels on Windows to eliminate dependency on compiler;
+
+0.4.9 (2020-10-11)
+------------------
+* Make default offset seconds 60 and enforce during alignment as opposed to throwing away alignments with > max_offset_seconds;
+* Add experimental section for using golden section search to find framerate ratio;
+* Restore ability to read stdin and write stdout after buggy permissions check;
+* Exceptions that occur during syncing were mistakenly suppressed; this is now fixed;

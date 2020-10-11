@@ -10,5 +10,5 @@ from ffsubsync.aligners import FFTAligner, MaxScoreAligner
 ])
 def test_fft_alignment(s1, s2, true_offset):
     assert FFTAligner().fit_transform(s2, s1) == true_offset
-    assert MaxScoreAligner(FFTAligner).fit_transform(s2, s1)[0] == true_offset
-    assert MaxScoreAligner(FFTAligner()).fit_transform(s2, s1)[0] == true_offset
+    assert MaxScoreAligner(FFTAligner).fit_transform(s2, s1)[0][1] == true_offset
+    assert MaxScoreAligner(FFTAligner()).fit_transform(s2, s1)[0][1] == true_offset

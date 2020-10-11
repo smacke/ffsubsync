@@ -77,21 +77,34 @@ def make_test_case(args, npy_savename, sync_was_successful):
 
 def try_sync(args, reference_pipe, srt_pipes, result):
     sync_was_successful = True
+    exc = None
     try:
-        logger.info('extracting speech segments from subtitles file %s...', args.srtin)
+        logger.info('extracting speech segments from %s...',
+                    'stdin' if args.srtin is None else 'subtitles file {}'.format(args.srtin))
         for srt_pipe in srt_pipes:
-            srt_pipe.fit(args.srtin)
+            if callable(srt_pipe):
+                continue
+            else:
+                srt_pipe.fit(args.srtin)
         logger.info('...done')
         logger.info('computing alignments...')
-        offset_samples, best_srt_pipe = MaxScoreAligner(
-            FFTAligner, SAMPLE_RATE, args.max_offset_seconds
-        ).fit_transform(
-            reference_pipe.transform(args.reference),
-            srt_pipes,
-        )
+        if args.skip_sync:
+            best_score = 0.
+            best_srt_pipe = srt_pipes[0]
+            if callable(best_srt_pipe):
+                best_srt_pipe = best_srt_pipe(1.0).fit(args.srtin)
+            offset_samples = 0
+        else:
+            (best_score, offset_samples), best_srt_pipe = MaxScoreAligner(
+                FFTAligner, args.srtin, SAMPLE_RATE, args.max_offset_seconds
+            ).fit_transform(
+                reference_pipe.transform(args.reference),
+                srt_pipes,
+            )
         logger.info('...done')
         offset_seconds = offset_samples / float(SAMPLE_RATE)
         scale_step = best_srt_pipe.named_steps['scale']
+        logger.info('score: %.3f', best_score)
         logger.info('offset seconds: %.3f', offset_seconds)
         logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
         output_steps = [('shift', SubtitleShifter(offset_seconds))]
@@ -109,10 +122,16 @@ def try_sync(args, reference_pipe, srt_pipes, result):
     except FailedToFindAlignmentException as e:
         sync_was_successful = False
         logger.error(e)
+    except Exception as e:
+        exc = e
+        sync_was_successful = False
+        logger.error(e)
     else:
         result['offset_seconds'] = offset_seconds
         result['framerate_scale_factor'] = scale_step.scale_factor
     finally:
+        if exc is not None:
+            raise exc
         result['sync_was_successful'] = sync_was_successful
         return sync_was_successful
 
@@ -158,10 +177,16 @@ def make_srt_pipes(args):
     if args.no_fix_framerate:
         framerate_ratios = [1.]
     else:
-        framerate_ratios = np.concatenate([
+        framerate_ratios = list(np.concatenate([
             [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
-        ])
-    parser = make_subtitle_parser(fmt=os.path.splitext(args.srtin)[-1][1:], caching=True, **args.__dict__)
+        ]))
+        if args.gss:
+            framerate_ratios.append(None)
+    if args.srtin is None:
+        srtin_format = 'srt'
+    else:
+        srtin_format = os.path.splitext(args.srtin)[-1][1:]
+    parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
     srt_pipes = [
         make_subtitle_speech_pipeline(
             **override(args, scale_factor=scale_factor, parser=parser)
@@ -226,12 +251,13 @@ def validate_args(args):
 
 
 def validate_file_permissions(args):
+    error_string_template = 'unable to {action} {file}; try ensuring file exists and has correct permissions'
     if not os.access(args.reference, os.R_OK):
-        raise ValueError('unable to read reference %s (try checking permissions)' % args.reference)
-    if not os.access(args.srtin, os.R_OK):
-        raise ValueError('unable to read input subtitles %s (try checking permissions)' % args.srtin)
-    if os.path.exists(args.srtout) and not os.access(args.srtout, os.W_OK):
-        raise ValueError('unable to write output subtitles %s (try checking permissions)' % args.srtout)
+        raise ValueError(error_string_template.format(action='read reference', file=args.reference))
+    if args.srtin is not None and not os.access(args.srtin, os.R_OK):
+        raise ValueError(error_string_template.format(action='read input subtitles', file=args.srtin))
+    if args.srtout is not None and os.path.exists(args.srtout) and not os.access(args.srtout, os.W_OK):
+        raise ValueError(error_string_template.format(action='write output subtitles', file=args.srtout))
     if args.make_test_case or args.serialize_speech:
         npy_savename = os.path.splitext(args.reference)[0] + '.npz'
         if os.path.exists(npy_savename) and not os.access(npy_savename, os.W_OK):
@@ -340,7 +366,7 @@ def add_cli_only_args(parser):
     parser.add_argument('--start-seconds', type=int, default=DEFAULT_START_SECONDS,
                         help='Start time for processing '
                              '(default=%d seconds).' % DEFAULT_START_SECONDS)
-    parser.add_argument('--max-offset-seconds', type=int, default=DEFAULT_MAX_OFFSET_SECONDS,
+    parser.add_argument('--max-offset-seconds', type=float, default=DEFAULT_MAX_OFFSET_SECONDS,
                         help='The max allowed offset seconds for any subtitle segment '
                              '(default=%d seconds).' % DEFAULT_MAX_OFFSET_SECONDS)
     parser.add_argument('--frame-rate', type=int, default=DEFAULT_FRAME_RATE,
@@ -372,6 +398,8 @@ def add_cli_only_args(parser):
                         'directory).')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--skip-sync', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--gss', action='store_true', help=argparse.SUPPRESS)
 
 
 def make_parser():
