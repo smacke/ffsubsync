@@ -100,7 +100,8 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                                      max_subtitle_seconds=self.max_subtitle_seconds,
                                      start_seconds=self.start_seconds),
                     sub_format=self.sub_format,
-                    encoding=encoding
+                    encoding=encoding,
+                    styles=parsed_subs.styles if isinstance(parsed_subs, pysubs2.SSAFile) else None
                 )
                 self.fit_fname = '<stdin>' if fname is None else fname
                 if len(encodings_to_try) > 1:

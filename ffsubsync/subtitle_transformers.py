@@ -44,7 +44,12 @@ class SubtitleScaler(SubsMixin, TransformerMixin):
                     sub.inner
                 )
             )
-        self.subs_ = GenericSubtitlesFile(scaled_subs, sub_format=subs.sub_format, encoding=subs.encoding)
+        self.subs_ = GenericSubtitlesFile(
+            scaled_subs,
+            sub_format=subs.sub_format,
+            encoding=subs.encoding,
+            styles=subs.styles
+        )
         return self
 
     def transform(self, *_):
