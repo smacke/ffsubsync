@@ -50,7 +50,7 @@ def make_test_case(args, npy_savename, sync_was_successful):
         if args.log_dir_path and os.path.isdir(args.log_dir_path):
             log_path = os.path.join(args.log_dir_path, log_path)
         shutil.copy(log_path, tar_dir)
-        shutil.copy(args.srtin, tar_dir)
+        shutil.copy(args.srtin[0], tar_dir)
         if sync_was_successful:
             shutil.move(args.srtout, tar_dir)
         if _ref_format(args.reference) in SUBTITLE_EXTENSIONS:
@@ -75,50 +75,55 @@ def make_test_case(args, npy_savename, sync_was_successful):
     return 0
 
 
-def try_sync(args, reference_pipe, srt_pipes, result):
+def try_sync(args, reference_pipe, result):
     sync_was_successful = True
     exc = None
     try:
         logger.info('extracting speech segments from %s...',
-                    'stdin' if args.srtin is None else 'subtitles file {}'.format(args.srtin))
-        for srt_pipe in srt_pipes:
-            if callable(srt_pipe):
-                continue
+                    'stdin' if not args.srtin else 'subtitles file(s) {}'.format(args.srtin))
+        if not args.srtin:
+            args.srtin = [None]
+        for srtin in args.srtin:
+            srtout = srtin if args.overwrite_input else args.srtout
+            srt_pipes = make_srt_pipes(args, srtin)
+            for srt_pipe in srt_pipes:
+                if callable(srt_pipe):
+                    continue
+                else:
+                    srt_pipe.fit(srtin)
+            logger.info('...done')
+            logger.info('computing alignments...')
+            if args.skip_sync:
+                best_score = 0.
+                best_srt_pipe = srt_pipes[0]
+                if callable(best_srt_pipe):
+                    best_srt_pipe = best_srt_pipe(1.0).fit(srtin)
+                offset_samples = 0
             else:
-                srt_pipe.fit(args.srtin)
-        logger.info('...done')
-        logger.info('computing alignments...')
-        if args.skip_sync:
-            best_score = 0.
-            best_srt_pipe = srt_pipes[0]
-            if callable(best_srt_pipe):
-                best_srt_pipe = best_srt_pipe(1.0).fit(args.srtin)
-            offset_samples = 0
-        else:
-            (best_score, offset_samples), best_srt_pipe = MaxScoreAligner(
-                FFTAligner, args.srtin, SAMPLE_RATE, args.max_offset_seconds
-            ).fit_transform(
-                reference_pipe.transform(args.reference),
-                srt_pipes,
-            )
-        logger.info('...done')
-        offset_seconds = offset_samples / float(SAMPLE_RATE)
-        scale_step = best_srt_pipe.named_steps['scale']
-        logger.info('score: %.3f', best_score)
-        logger.info('offset seconds: %.3f', offset_seconds)
-        logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
-        output_steps = [('shift', SubtitleShifter(offset_seconds))]
-        if args.merge_with_reference:
-            output_steps.append(
-                ('merge',
-                 SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
-            )
-        output_pipe = Pipeline(output_steps)
-        out_subs = output_pipe.fit_transform(scale_step.subs_)
-        if args.output_encoding != 'same':
-            out_subs = out_subs.set_encoding(args.output_encoding)
-        logger.info('writing output to {}'.format(args.srtout or 'stdout'))
-        out_subs.write_file(args.srtout)
+                (best_score, offset_samples), best_srt_pipe = MaxScoreAligner(
+                    FFTAligner, srtin, SAMPLE_RATE, args.max_offset_seconds
+                ).fit_transform(
+                    reference_pipe.transform(args.reference),
+                    srt_pipes,
+                )
+            logger.info('...done')
+            offset_seconds = offset_samples / float(SAMPLE_RATE)
+            scale_step = best_srt_pipe.named_steps['scale']
+            logger.info('score: %.3f', best_score)
+            logger.info('offset seconds: %.3f', offset_seconds)
+            logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
+            output_steps = [('shift', SubtitleShifter(offset_seconds))]
+            if args.merge_with_reference:
+                output_steps.append(
+                    ('merge',
+                    SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
+                )
+            output_pipe = Pipeline(output_steps)
+            out_subs = output_pipe.fit_transform(scale_step.subs_)
+            if args.output_encoding != 'same':
+                out_subs = out_subs.set_encoding(args.output_encoding)
+            logger.info('writing output to {}'.format(srtout or 'stdout'))
+            out_subs.write_file(srtout)
     except FailedToFindAlignmentException as e:
         sync_was_successful = False
         logger.error(e)
@@ -173,7 +178,7 @@ def make_reference_pipe(args):
         ])
 
 
-def make_srt_pipes(args):
+def make_srt_pipes(args, srtin):
     if args.no_fix_framerate:
         framerate_ratios = [1.]
     else:
@@ -182,10 +187,10 @@ def make_srt_pipes(args):
         ]))
         if args.gss:
             framerate_ratios.append(None)
-    if args.srtin is None:
+    if srtin is None:
         srtin_format = 'srt'
     else:
-        srtin_format = os.path.splitext(args.srtin)[-1][1:]
+        srtin_format = os.path.splitext(srtin)[-1][1:]
     parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
     srt_pipes = [
         make_subtitle_speech_pipeline(
@@ -229,13 +234,19 @@ def extract_subtitles_from_reference(args):
 def validate_args(args):
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
+    if len(args.srtin) > 1 and not args.overwrite_input:
+            raise ValueError('cannot specify multiple input srt files without overwriting')
+    if len(args.srtin) > 1 and args.make_test_case:
+            raise ValueError('cannot specify multiple input srt files for test cases')
+    if len(args.srtin) > 1 and args.gui_mode:
+            raise ValueError('cannot specify multiple input srt files in GUI mode')
     if args.make_test_case and not args.gui_mode:  # this validation not necessary for gui mode
         if args.srtin is None or args.srtout is None:
             raise ValueError('need to specify input and output srt files for test cases')
     if args.overwrite_input:
         if args.extract_subs_from_stream is not None:
             raise ValueError('input overwriting not allowed for extracting subtitles from reference')
-        if args.srtin is None:
+        if not args.srtin:
             raise ValueError(
                 'need to specify input srt if --overwrite-input is specified since we cannot overwrite stdin'
             )
@@ -246,7 +257,7 @@ def validate_args(args):
     if args.extract_subs_from_stream is not None:
         if args.make_test_case:
             raise ValueError('test case is for sync and not subtitle extraction')
-        if args.srtin is not None:
+        if args.srtin:
             raise ValueError('stream specified for reference subtitle extraction; -i flag for sync input not allowed')
 
 
@@ -254,8 +265,9 @@ def validate_file_permissions(args):
     error_string_template = 'unable to {action} {file}; try ensuring file exists and has correct permissions'
     if not os.access(args.reference, os.R_OK):
         raise ValueError(error_string_template.format(action='read reference', file=args.reference))
-    if args.srtin is not None and not os.access(args.srtin, os.R_OK):
-        raise ValueError(error_string_template.format(action='read input subtitles', file=args.srtin))
+    for srtin in args.srtin:
+        if srtin is not None and not os.access(srtin, os.R_OK):
+            raise ValueError(error_string_template.format(action='read input subtitles', file=srtin))
     if args.srtout is not None and os.path.exists(args.srtout) and not os.access(args.srtout, os.W_OK):
         raise ValueError(error_string_template.format(action='write output subtitles', file=args.srtout))
     if args.make_test_case or args.serialize_speech:
@@ -277,10 +289,8 @@ def run(args):
         logger.error(e)
         result['retval'] = 1
         return result
-    if args.overwrite_input:
-        args.srtout = args.srtin
     if args.gui_mode and args.srtout is None:
-        args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin)[0])
+        args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin[0])[0])
     try:
         validate_file_permissions(args)
     except ValueError as e:
@@ -314,11 +324,10 @@ def run(args):
         npy_savename = os.path.splitext(args.reference)[0] + '.npz'
         np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
         logger.info('...done')
-        if args.srtin is None:
+        if args.srtin[0] is None:
             logger.info('unsynchronized subtitle file not specified; skipping synchronization')
             return result
-    srt_pipes = make_srt_pipes(args)
-    sync_was_successful = try_sync(args, reference_pipe, srt_pipes, result)
+    sync_was_successful = try_sync(args, reference_pipe, result)
     if log_handler is not None and log_path is not None:
         assert args.make_test_case
         log_handler.close()
@@ -335,7 +344,7 @@ def add_main_args_for_cli(parser):
         'reference',
         help='Reference (video, subtitles, or a numpy array with VAD speech) to which to synchronize input subtitles.'
     )
-    parser.add_argument('-i', '--srtin', help='Input subtitles file (default=stdin).')
+    parser.add_argument('-i', '--srtin', nargs='*', help='Input subtitles file (default=stdin).')
     parser.add_argument('-o', '--srtout', help='Output subtitles file (default=stdout).')
     parser.add_argument('--merge-with-reference', '--merge', action='store_true',
                         help='Merge reference subtitles with synced output subtitles.')

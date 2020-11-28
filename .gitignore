@@ -5,3 +5,4 @@ dist
 *.egg-info
 .vim
 __version__
+.venv/
