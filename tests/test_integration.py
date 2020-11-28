@@ -79,13 +79,13 @@ def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_en
     # context manager TemporaryDirectory not available on py2
     dirpath = tempfile.mkdtemp()
     try:
-        args.srtout = os.path.join(dirpath, 'test' + os.path.splitext(args.srtin)[-1])
+        args.srtout = os.path.join(dirpath, 'test' + os.path.splitext(args.srtin[0])[-1])
         assert ffsubsync.run(args)['retval'] == 0
         if should_filecmp:
             assert filecmp.cmp(args.srtout, truth, shallow=False)
         else:
             assert timestamps_roughly_match(args.srtout, truth)
         if should_detect_encoding is not None:
-            assert detected_encoding(args.srtin) == should_detect_encoding
+            assert detected_encoding(args.srtin[0]) == should_detect_encoding
     finally:
         shutil.rmtree(dirpath)
