@@ -28,6 +28,9 @@ First, make sure ffmpeg is installed. On MacOS, this looks like:
 ~~~
 brew install ffmpeg
 ~~~
+(Windows users: make sure `ffmpeg` is on your path and can be referenced
+from the command line!)
+
 Next, grab the script. It should work with both Python 2 and Python 3:
 ~~~
 pip install ffsubsync
