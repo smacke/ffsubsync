@@ -107,7 +107,7 @@ def try_sync(args, reference_pipe, result):
                     srt_pipes,
                 )
             logger.info('...done')
-            offset_seconds = offset_samples / float(SAMPLE_RATE)
+            offset_seconds = offset_samples / float(SAMPLE_RATE) + args.apply_offset_seconds
             scale_step = best_srt_pipe.named_steps['scale']
             logger.info('score: %.3f', best_score)
             logger.info('offset seconds: %.3f', offset_seconds)
@@ -378,6 +378,9 @@ def add_cli_only_args(parser):
     parser.add_argument('--max-offset-seconds', type=float, default=DEFAULT_MAX_OFFSET_SECONDS,
                         help='The max allowed offset seconds for any subtitle segment '
                              '(default=%d seconds).' % DEFAULT_MAX_OFFSET_SECONDS)
+    parser.add_argument('--apply-offset-seconds', type=float, default=DEFAULT_APPLY_OFFSET_SECONDS,
+                        help='Apply a predefined offset in seconds to all subtitle segments '
+                             '(default=%d seconds).' % DEFAULT_APPLY_OFFSET_SECONDS)
     parser.add_argument('--frame-rate', type=int, default=DEFAULT_FRAME_RATE,
                         help='Frame rate for audio extraction (default=%d).' % DEFAULT_FRAME_RATE)
     parser.add_argument('--output-encoding', default='utf-8',
