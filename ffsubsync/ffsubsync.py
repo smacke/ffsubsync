@@ -356,8 +356,10 @@ def add_main_args_for_cli(parser):
         '--reference-stream', '--refstream', '--reference-track', '--reftrack',
         default=None,
         help='Which stream/track in the video file to use as reference, '
-             'formatted according to ffmpeg conventions. For example, s:0 '
-             'uses the first subtitle track; a:3 would use the third audio track.'
+             'formatted according to ffmpeg conventions. For example, 0:s:0 '
+             'uses the first subtitle track; 0:a:3 would use the third audio track. '
+             'You can also drop the leading `0:`; i.e. use s:0 or a:3, respectively. '
+             'Example: `ffs ref.mkv -i in.srt -o out.srt --reference-stream s:2`'
     )
 
 

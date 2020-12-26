@@ -167,7 +167,11 @@ class VideoSpeechTransformer(TransformerMixin):
             embedded_subs.append(speech_step.subtitle_speech_results_)
             embedded_subs_times.append(speech_step.max_time_)
         if len(embedded_subs) == 0:
-            raise ValueError('Video file appears to lack subtitle stream')
+            if self.ref_stream is None:
+                error_msg = 'Video file appears to lack subtitle stream'
+            else:
+                error_msg = 'Stream {} not found'.format(self.ref_stream)
+            raise ValueError(error_msg)
         # use longest set of embedded subs
         self.video_speech_results_ = embedded_subs[int(np.argmax(embedded_subs_times))]
 
