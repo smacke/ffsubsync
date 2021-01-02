@@ -42,6 +42,7 @@ def make_subtitle_speech_pipeline(
     assert parser.encoding == encoding
     assert parser.max_subtitle_seconds == max_subtitle_seconds
     assert parser.start_seconds == start_seconds
+
     def subpipe_maker(framerate_ratio):
         return Pipeline([
             ('parse', parser),
@@ -128,8 +129,29 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
     return _detect
 
 
-class VideoSpeechTransformer(TransformerMixin):
-    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0, ffmpeg_path=None, ref_stream=None, vlc_mode=False, gui_mode=False):
+class ComputeSpeechFrameBoundariesMixin(object):
+    def __init__(self):
+        self.start_frame_ = None
+        self.end_frame_ = None
+
+    @property
+    def num_frames(self):
+        if self.start_frame_ is None or self.end_frame_ is None:
+            return None
+        return self.end_frame_ - self.start_frame_
+
+    def fit_boundaries(self, speech_frames):
+        nz = np.nonzero(speech_frames)[0]
+        if len(nz) > 0:
+            self.start_frame_ = np.min(nz)
+            self.end_frame_ = np.max(nz)
+        return self
+
+
+class VideoSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
+    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0,
+                 ffmpeg_path=None, ref_stream=None, vlc_mode=False, gui_mode=False):
+        super(VideoSpeechTransformer, self).__init__()
         self.vad = vad
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
@@ -164,7 +186,7 @@ class VideoSpeechTransformer(TransformerMixin):
                 break
             pipe = make_subtitle_speech_pipeline(start_seconds=self.start_seconds).fit(output)
             speech_step = pipe.steps[-1][1]
-            embedded_subs.append(speech_step.subtitle_speech_results_)
+            embedded_subs.append(speech_step)
             embedded_subs_times.append(speech_step.max_time_)
         if len(embedded_subs) == 0:
             if self.ref_stream is None:
@@ -173,7 +195,9 @@ class VideoSpeechTransformer(TransformerMixin):
                 error_msg = 'Stream {} not found'.format(self.ref_stream)
             raise ValueError(error_msg)
         # use longest set of embedded subs
-        self.video_speech_results_ = embedded_subs[int(np.argmax(embedded_subs_times))]
+        subs_to_use = embedded_subs[int(np.argmax(embedded_subs_times))]
+        self.video_speech_results_ = subs_to_use.subtitle_speech_results_
+        self.fit_boundaries(self.video_speech_results_)
 
     def fit(self, fname, *_):
         if 'subs' in self.vad and (self.ref_stream is None or self.ref_stream.startswith('0:s:')):
@@ -260,14 +284,30 @@ class VideoSpeechTransformer(TransformerMixin):
                 'Unable to detect speech. Perhaps try specifying a different stream / track, or a different vad.'
             )
         self.video_speech_results_ = np.concatenate(media_bstring)
+        self.fit_boundaries(self.video_speech_results_)
         return self
 
     def transform(self, *_):
         return self.video_speech_results_
 
 
-class SubtitleSpeechTransformer(TransformerMixin):
+def _is_metadata(content, is_beginning_or_end):
+    content = content.strip()
+    if len(content) == 0:
+        return True
+    if content[0] == '[':
+        return True
+    if is_beginning_or_end:
+        if 'english' in content.lower():
+            return True
+        if ' - ' in content:
+            return True
+    return False
+
+
+class SubtitleSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
     def __init__(self, sample_rate, start_seconds=0, framerate_ratio=1.):
+        super(SubtitleSpeechTransformer, self).__init__()
         self.sample_rate = sample_rate
         self.start_seconds = start_seconds
         self.framerate_ratio = framerate_ratio
@@ -280,20 +320,28 @@ class SubtitleSpeechTransformer(TransformerMixin):
             max_time = max(max_time, sub.end.total_seconds())
         self.max_time_ = max_time - self.start_seconds
         samples = np.zeros(int(max_time * self.sample_rate) + 2, dtype=float)
-        for sub in subs:
+        start_frame = float('inf')
+        end_frame = 0
+        for i, sub in enumerate(subs):
+            if _is_metadata(sub.content, i == 0 or i + 1 == len(subs)):
+                continue
             start = int(round((sub.start.total_seconds() - self.start_seconds) * self.sample_rate))
+            start_frame = min(start_frame, start)
             duration = sub.end.total_seconds() - sub.start.total_seconds()
             end = start + int(round(duration * self.sample_rate))
+            end_frame = max(end_frame, end)
             samples[start:end] = min(1. / self.framerate_ratio, 1.)
         self.subtitle_speech_results_ = samples
+        self.fit_boundaries(self.subtitle_speech_results_)
         return self
 
     def transform(self, *_):
         return self.subtitle_speech_results_
 
 
-class DeserializeSpeechTransformer(TransformerMixin):
+class DeserializeSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
     def __init__(self):
+        super(DeserializeSpeechTransformer, self).__init__()
         self.deserialized_speech_results_ = None
 
     def fit(self, fname, *_):
@@ -305,6 +353,7 @@ class DeserializeSpeechTransformer(TransformerMixin):
                 raise ValueError('could not find "speech" array in '
                                  'serialized file; only contains: %s' % speech.files)
         self.deserialized_speech_results_ = speech
+        self.fit_boundaries(self.deserialized_speech_results_)
         return self
 
     def transform(self, *_):

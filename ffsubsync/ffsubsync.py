@@ -75,6 +75,29 @@ def make_test_case(args, npy_savename, sync_was_successful):
     return 0
 
 
+def get_srt_pipe_maker(args, srtin):
+    if srtin is None:
+        srtin_format = 'srt'
+    else:
+        srtin_format = os.path.splitext(srtin)[-1][1:]
+    parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
+    return lambda scale_factor: make_subtitle_speech_pipeline(
+        **override(args, scale_factor=scale_factor, parser=parser)
+    )
+
+
+def get_framerate_ratios_to_try(args):
+    if args.no_fix_framerate:
+        return []
+    else:
+        framerate_ratios = list(np.concatenate([
+            np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
+        ]))
+        if args.gss:
+            framerate_ratios.append(None)
+        return framerate_ratios
+
+
 def try_sync(args, reference_pipe, result):
     sync_was_successful = True
     exc = None
@@ -85,12 +108,17 @@ def try_sync(args, reference_pipe, result):
             args.srtin = [None]
         for srtin in args.srtin:
             srtout = srtin if args.overwrite_input else args.srtout
-            srt_pipes = make_srt_pipes(args, srtin)
+            srt_pipe_maker = get_srt_pipe_maker(args, srtin)
+            framerate_ratios = get_framerate_ratios_to_try(args)
+            srt_pipes = [srt_pipe_maker(1.)] + [srt_pipe_maker(rat) for rat in framerate_ratios]
             for srt_pipe in srt_pipes:
                 if callable(srt_pipe):
                     continue
                 else:
                     srt_pipe.fit(srtin)
+            inferred_framerate_ratio_from_length = float(reference_pipe[-1].num_frames) / srt_pipes[0][-1].num_frames
+            logger.info('inferred frameratio ratio: %.3f' % inferred_framerate_ratio_from_length)
+            srt_pipes.append(srt_pipe_maker(inferred_framerate_ratio_from_length).fit(srtin))
             logger.info('...done')
             logger.info('computing alignments...')
             if args.skip_sync:
@@ -115,8 +143,7 @@ def try_sync(args, reference_pipe, result):
             output_steps = [('shift', SubtitleShifter(offset_seconds))]
             if args.merge_with_reference:
                 output_steps.append(
-                    ('merge',
-                    SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
+                    ('merge', SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
                 )
             output_pipe = Pipeline(output_steps)
             out_subs = output_pipe.fit_transform(scale_step.subs_)
@@ -176,29 +203,6 @@ def make_reference_pipe(args):
                                                       vlc_mode=args.vlc_mode,
                                                       gui_mode=args.gui_mode))
         ])
-
-
-def make_srt_pipes(args, srtin):
-    if args.no_fix_framerate:
-        framerate_ratios = [1.]
-    else:
-        framerate_ratios = list(np.concatenate([
-            [1.], np.array(FRAMERATE_RATIOS), 1./np.array(FRAMERATE_RATIOS)
-        ]))
-        if args.gss:
-            framerate_ratios.append(None)
-    if srtin is None:
-        srtin_format = 'srt'
-    else:
-        srtin_format = os.path.splitext(srtin)[-1][1:]
-    parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
-    srt_pipes = [
-        make_subtitle_speech_pipeline(
-            **override(args, scale_factor=scale_factor, parser=parser)
-        )
-        for scale_factor in framerate_ratios
-    ]
-    return srt_pipes
 
 
 def extract_subtitles_from_reference(args):

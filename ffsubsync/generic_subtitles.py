@@ -35,6 +35,16 @@ class GenericSubtitle(object):
         eq = eq and self.inner == other.inner
         return eq
 
+    @property
+    def content(self):
+        if isinstance(self.inner, srt.Subtitle):
+            ret = self.inner.content
+        elif isinstance(self.inner, pysubs2.SSAEvent):
+            ret = self.inner.text
+        else:
+            raise NotImplementedError('unsupported subtitle type: %s' % type(self.inner))
+        return ret
+
     def resolve_inner_timestamps(self):
         ret = copy.deepcopy(self.inner)
         if isinstance(self.inner, srt.Subtitle):
