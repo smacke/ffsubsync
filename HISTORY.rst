@@ -168,14 +168,17 @@ History
 
 0.4.9 (2020-10-11)
 ------------------
-* Make default offset seconds 60 and enforce during alignment as opposed to throwing away alignments with > max_offset_seconds;
+* Make default max offset seconds 60 and enforce during alignment as opposed to throwing away alignments with > max_offset_seconds;
 * Add experimental section for using golden section search to find framerate ratio;
 * Restore ability to read stdin and write stdout after buggy permissions check;
 * Exceptions that occur during syncing were mistakenly suppressed; this is now fixed;
 
 0.4.10 (2021-01-18)
 -------------------
-* Reduce max_offset_seconds (improves sync in most cases);
+* Lots of improvements from PRs submitted by @alucryd (big thanks!):
+    * Retain ASS styles;
+    * Support syncing several subs against the same ref via --overwrite-input flag;
+    * Add --apply-offset-seconds postprocess option to shift alignment by prespecified amount;
 * Filter out metadata in subtitles when extracting speech;
 * Add experimental --golden-section-search over framerate ratio (off by default);
 * Try to improve sync by inferring framerate ratio based on relative duration of synced vs unsynced;
