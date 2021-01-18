@@ -172,3 +172,10 @@ History
 * Add experimental section for using golden section search to find framerate ratio;
 * Restore ability to read stdin and write stdout after buggy permissions check;
 * Exceptions that occur during syncing were mistakenly suppressed; this is now fixed;
+
+0.4.10 (2021-01-18)
+-------------------
+* Reduce max_offset_seconds (improves sync in most cases);
+* Filter out metadata in subtitles when extracting speech;
+* Add experimental --golden-section-search over framerate ratio (off by default);
+* Try to improve sync by inferring framerate ratio based on relative duration of synced vs unsynced;

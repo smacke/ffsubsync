@@ -116,10 +116,11 @@ def try_sync(args, reference_pipe, result):
                     continue
                 else:
                     srt_pipe.fit(srtin)
-            inferred_framerate_ratio_from_length = float(reference_pipe[-1].num_frames) / srt_pipes[0][-1].num_frames
-            logger.info('inferred frameratio ratio: %.3f' % inferred_framerate_ratio_from_length)
-            srt_pipes.append(srt_pipe_maker(inferred_framerate_ratio_from_length).fit(srtin))
-            logger.info('...done')
+            if not args.skip_infer_framerate_ratio:
+                inferred_framerate_ratio_from_length = float(reference_pipe[-1].num_frames) / srt_pipes[0][-1].num_frames
+                logger.info('inferred frameratio ratio: %.3f' % inferred_framerate_ratio_from_length)
+                srt_pipes.append(srt_pipe_maker(inferred_framerate_ratio_from_length).fit(srtin))
+                logger.info('...done')
             logger.info('computing alignments...')
             if args.skip_sync:
                 best_score = 0.
@@ -389,6 +390,8 @@ def add_cli_only_args(parser):
                              '(default=%d seconds).' % DEFAULT_APPLY_OFFSET_SECONDS)
     parser.add_argument('--frame-rate', type=int, default=DEFAULT_FRAME_RATE,
                         help='Frame rate for audio extraction (default=%d).' % DEFAULT_FRAME_RATE)
+    parser.add_argument('--skip-infer-framerate-ratio', action='store_true',
+                        help='If set, do not try to infer framerate ratio based on duration ratio.')
     parser.add_argument('--output-encoding', default='utf-8',
                         help='What encoding to use for writing output subtitles '
                              '(default=utf-8). Can indicate "same" to use same '
