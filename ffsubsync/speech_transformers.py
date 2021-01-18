@@ -291,11 +291,20 @@ class VideoSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin
         return self.video_speech_results_
 
 
+_PAIRED_NESTER = {
+    '(': ')',
+    '{': '}',
+    '[': ']',
+    # FIXME: False positive sometimes when there are html tags, e.g. <i> Hello? </i>
+    # '<': '>',
+}
+
+
 def _is_metadata(content, is_beginning_or_end):
     content = content.strip()
     if len(content) == 0:
         return True
-    if content[0] == '[':
+    if content[0] in _PAIRED_NESTER.keys() and content[-1] == _PAIRED_NESTER[content[0]]:
         return True
     if is_beginning_or_end:
         if 'english' in content.lower():

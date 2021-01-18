@@ -6,3 +6,4 @@ dist
 .vim
 __version__
 .venv/
+.coverage

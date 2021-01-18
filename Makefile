@@ -14,7 +14,7 @@ deploy: build
 	./scripts/deploy.sh
 
 check:
-	INTEGRATION=1 pytest
+	INTEGRATION=1 pytest --cov=ffsubsync
 
 test: check
 tests: check
