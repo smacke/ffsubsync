@@ -59,7 +59,7 @@ def make_subtitle_speech_pipeline(
         return subpipe_maker(scale_factor)
 
 
-def _make_auditok_detector(sample_rate, frame_rate):
+def _make_auditok_detector(sample_rate, frame_rate, non_speech_label):
     try:
         from auditok import \
             BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
@@ -76,31 +76,37 @@ def _make_auditok_detector(sample_rate, frame_rate):
     bytes_per_frame = 2
     frames_per_window = frame_rate // sample_rate
     validator = AudioEnergyValidator(
-        sample_width=bytes_per_frame, energy_threshold=50)
+        sample_width=bytes_per_frame, energy_threshold=50
+    )
     tokenizer = StreamTokenizer(
-        validator=validator, min_length=0.2*sample_rate,
-        max_length=int(5*sample_rate),
-        max_continuous_silence=0.25*sample_rate)
+        validator=validator,
+        min_length=0.2 * sample_rate,
+        max_length=int(5 * sample_rate),
+        max_continuous_silence=0.25 * sample_rate
+    )
 
     def _detect(asegment):
-        asource = BufferAudioSource(data_buffer=asegment,
-                                    sampling_rate=frame_rate,
-                                    sample_width=bytes_per_frame,
-                                    channels=1)
+        asource = BufferAudioSource(
+            data_buffer=asegment,
+            sampling_rate=frame_rate,
+            sample_width=bytes_per_frame,
+            channels=1
+        )
         ads = ADSFactory.ads(audio_source=asource, block_dur=1./sample_rate)
         ads.open()
         tokens = tokenizer.tokenize(ads)
-        length = (len(asegment)//bytes_per_frame
-                  + frames_per_window - 1)//frames_per_window
-        media_bstring = np.zeros(length+1, dtype=int)
+        length = (
+            len(asegment)//bytes_per_frame + frames_per_window - 1
+        ) // frames_per_window
+        media_bstring = np.zeros(length + 1)
         for token in tokens:
-            media_bstring[token[1]] += 1
-            media_bstring[token[2]+1] -= 1
-        return (np.cumsum(media_bstring)[:-1] > 0).astype(float)
+            media_bstring[token[1]] = 1.
+            media_bstring[token[2] + 1] = non_speech_label - 1.
+        return np.clip(np.cumsum(media_bstring)[:-1], 0., 1.)
     return _detect
 
 
-def _make_webrtcvad_detector(sample_rate, frame_rate):
+def _make_webrtcvad_detector(sample_rate, frame_rate, non_speech_label):
     import webrtcvad
     vad = webrtcvad.Vad()
     vad.set_mode(3)  # set non-speech pruning aggressiveness from 0 to 3
@@ -123,7 +129,7 @@ def _make_webrtcvad_detector(sample_rate, frame_rate):
                 is_speech = False
                 failures += 1
             # webrtcvad has low recall on mode 3, so treat non-speech as "not sure"
-            media_bstring.append(1. if is_speech else 0.5)
+            media_bstring.append(1. if is_speech else non_speech_label)
         return np.array(media_bstring)
 
     return _detect
@@ -141,20 +147,23 @@ class ComputeSpeechFrameBoundariesMixin(object):
         return self.end_frame_ - self.start_frame_
 
     def fit_boundaries(self, speech_frames):
-        nz = np.nonzero(speech_frames)[0]
+        nz = np.nonzero(speech_frames > 0.5)[0]
         if len(nz) > 0:
             self.start_frame_ = np.min(nz)
             self.end_frame_ = np.max(nz)
         return self
 
 
-class VideoSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
-    def __init__(self, vad, sample_rate, frame_rate, start_seconds=0,
-                 ffmpeg_path=None, ref_stream=None, vlc_mode=False, gui_mode=False):
+class VideoSpeechTransformer(TransformerMixin):
+    def __init__(
+        self, vad, sample_rate, frame_rate, non_speech_label, start_seconds=0,
+        ffmpeg_path=None, ref_stream=None, vlc_mode=False, gui_mode=False
+    ):
         super(VideoSpeechTransformer, self).__init__()
         self.vad = vad
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate
+        self._non_speech_label = non_speech_label
         self.start_seconds = start_seconds
         self.ffmpeg_path = ffmpeg_path
         self.ref_stream = ref_stream
@@ -197,7 +206,6 @@ class VideoSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin
         # use longest set of embedded subs
         subs_to_use = embedded_subs[int(np.argmax(embedded_subs_times))]
         self.video_speech_results_ = subs_to_use.subtitle_speech_results_
-        self.fit_boundaries(self.video_speech_results_)
 
     def fit(self, fname, *_):
         if 'subs' in self.vad and (self.ref_stream is None or self.ref_stream.startswith('0:s:')):
@@ -216,9 +224,9 @@ class VideoSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin
             logger.warning(e)
             total_duration = None
         if 'webrtc' in self.vad:
-            detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate)
+            detector = _make_webrtcvad_detector(self.sample_rate, self.frame_rate, self._non_speech_label)
         elif 'auditok' in self.vad:
-            detector = _make_auditok_detector(self.sample_rate, self.frame_rate)
+            detector = _make_auditok_detector(self.sample_rate, self.frame_rate, self._non_speech_label)
         else:
             raise ValueError('unknown vad: %s' % self.vad)
         media_bstring = []
@@ -284,7 +292,6 @@ class VideoSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin
                 'Unable to detect speech. Perhaps try specifying a different stream / track, or a different vad.'
             )
         self.video_speech_results_ = np.concatenate(media_bstring)
-        self.fit_boundaries(self.video_speech_results_)
         return self
 
     def transform(self, *_):
@@ -300,6 +307,7 @@ _PAIRED_NESTER = {
 }
 
 
+# TODO: need way better metadata detector
 def _is_metadata(content, is_beginning_or_end):
     content = content.strip()
     if len(content) == 0:
@@ -348,9 +356,10 @@ class SubtitleSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMi
         return self.subtitle_speech_results_
 
 
-class DeserializeSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
-    def __init__(self):
+class DeserializeSpeechTransformer(TransformerMixin):
+    def __init__(self, non_speech_label):
         super(DeserializeSpeechTransformer, self).__init__()
+        self._non_speech_label = non_speech_label
         self.deserialized_speech_results_ = None
 
     def fit(self, fname, *_):
@@ -361,8 +370,8 @@ class DeserializeSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundarie
             else:
                 raise ValueError('could not find "speech" array in '
                                  'serialized file; only contains: %s' % speech.files)
+        speech[speech < 1.] = self._non_speech_label
         self.deserialized_speech_results_ = speech
-        self.fit_boundaries(self.deserialized_speech_results_)
         return self
 
     def transform(self, *_):

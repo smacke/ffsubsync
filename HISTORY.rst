@@ -179,3 +179,10 @@ History
 * Filter out metadata in subtitles when extracting speech;
 * Add experimental --golden-section-search over framerate ratio (off by default);
 * Try to improve sync by inferring framerate ratio based on relative duration of synced vs unsynced;
+
+0.4.11 (2021-01-29)
+-------------------
+* Misc sync improvements:
+    * Have webrtcvad use '0' as the non speech label instead of 0.5;
+    * Allow the vad non speech label to be specified via the --non-speech-label command line parameter;
+    * Don't try to infer framerate ratio based on length between first and last speech frames for non-subtitle speech detection;

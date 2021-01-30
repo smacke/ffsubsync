@@ -116,7 +116,7 @@ def try_sync(args, reference_pipe, result):
                     continue
                 else:
                     srt_pipe.fit(srtin)
-            if not args.skip_infer_framerate_ratio:
+            if not args.skip_infer_framerate_ratio and hasattr(reference_pipe[-1], 'num_frames'):
                 inferred_framerate_ratio_from_length = float(reference_pipe[-1].num_frames) / srt_pipes[0][-1].num_frames
                 logger.info('inferred frameratio ratio: %.3f' % inferred_framerate_ratio_from_length)
                 srt_pipes.append(srt_pipe_maker(inferred_framerate_ratio_from_length).fit(srtin))
@@ -185,7 +185,7 @@ def make_reference_pipe(args):
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
         return Pipeline([
-            ('deserialize', DeserializeSpeechTransformer())
+            ('deserialize', DeserializeSpeechTransformer(args.non_speech_label))
         ])
     else:
         vad = args.vad or DEFAULT_VAD
@@ -195,14 +195,17 @@ def make_reference_pipe(args):
         if ref_stream is not None and not ref_stream.startswith('0:'):
             ref_stream = '0:' + ref_stream
         return Pipeline([
-            ('speech_extract', VideoSpeechTransformer(vad=vad,
-                                                      sample_rate=SAMPLE_RATE,
-                                                      frame_rate=args.frame_rate,
-                                                      start_seconds=args.start_seconds,
-                                                      ffmpeg_path=args.ffmpeg_path,
-                                                      ref_stream=ref_stream,
-                                                      vlc_mode=args.vlc_mode,
-                                                      gui_mode=args.gui_mode))
+            ('speech_extract', VideoSpeechTransformer(
+                vad=vad,
+                sample_rate=SAMPLE_RATE,
+                frame_rate=args.frame_rate,
+                non_speech_label=args.non_speech_label,
+                start_seconds=args.start_seconds,
+                ffmpeg_path=args.ffmpeg_path,
+                ref_stream=ref_stream,
+                vlc_mode=args.vlc_mode,
+                gui_mode=args.gui_mode
+            )),
         ])
 
 
@@ -392,6 +395,8 @@ def add_cli_only_args(parser):
                         help='Frame rate for audio extraction (default=%d).' % DEFAULT_FRAME_RATE)
     parser.add_argument('--skip-infer-framerate-ratio', action='store_true',
                         help='If set, do not try to infer framerate ratio based on duration ratio.')
+    parser.add_argument('--non-speech-label', type=float, default=DEFAULT_NON_SPEECH_LABEL,
+                        help='Label to use for frames detected as non-speech (default=%f)' % DEFAULT_NON_SPEECH_LABEL)
     parser.add_argument('--output-encoding', default='utf-8',
                         help='What encoding to use for writing output subtitles '
                              '(default=utf-8). Can indicate "same" to use same '

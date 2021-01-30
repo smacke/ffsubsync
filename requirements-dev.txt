@@ -1,6 +1,7 @@
 # testing
 flake8
 pytest
+pytest-cov
 pyyaml;python_version!="3.4"
 twine;python_version!="3.4"
 versioneer
