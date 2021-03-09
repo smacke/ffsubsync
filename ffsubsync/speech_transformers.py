@@ -38,7 +38,7 @@ def make_subtitle_speech_pipeline(
             caching=caching,
             max_subtitle_seconds=max_subtitle_seconds,
             start_seconds=start_seconds,
-            **kwargs,
+            **kwargs
         )
     assert parser.encoding == encoding
     assert parser.max_subtitle_seconds == max_subtitle_seconds
