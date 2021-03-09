@@ -96,6 +96,7 @@ class GenericSubtitlesFile(object):
         self._sub_format = sub_format
         self._encoding = encoding
         self._styles = kwargs.pop('styles', None)
+        self._info = kwargs.pop('info', None)
 
     def set_encoding(self, encoding):
         if encoding != 'same':
@@ -120,6 +121,10 @@ class GenericSubtitlesFile(object):
     def styles(self):
         return self._styles
 
+    @property
+    def info(self):
+        return self._info
+
     def gen_raw_resolved_subs(self):
         for sub in self.subs_:
             yield sub.resolve_inner_timestamps()
@@ -134,7 +139,8 @@ class GenericSubtitlesFile(object):
             offset_subs,
             sub_format=self.sub_format,
             encoding=self.encoding,
-            styles=self.styles
+            styles=self.styles,
+            info=self.info
         )
 
     def write_file(self, fname):
@@ -150,6 +156,7 @@ class GenericSubtitlesFile(object):
             ssaf = pysubs2.SSAFile()
             ssaf.events = subs
             ssaf.styles = self.styles
+            ssaf.info = self.info
             to_write = ssaf.to_string(out_format)
         else:
             raise NotImplementedError('unsupported output format: %s' % out_format)
