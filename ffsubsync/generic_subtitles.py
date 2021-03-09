@@ -150,14 +150,16 @@ class GenericSubtitlesFile(object):
         else:
             out_format = os.path.splitext(fname)[-1][1:]
         subs = list(self.gen_raw_resolved_subs())
-        if out_format == 'srt':
-            to_write = srt.compose(subs)
-        elif out_format in ('ssa', 'ass'):
+        if self._sub_format in ('ssa', 'ass'):
             ssaf = pysubs2.SSAFile()
             ssaf.events = subs
             ssaf.styles = self.styles
             ssaf.info = self.info
             to_write = ssaf.to_string(out_format)
+        elif self._sub_format == 'srt' and out_format in ('ssa', 'ass'):
+            to_write = pysubs2.SSAFile.from_string(srt.compose(subs)).to_string(out_format)
+        elif out_format == 'srt':
+            to_write = srt.compose(subs)
         else:
             raise NotImplementedError('unsupported output format: %s' % out_format)
 
