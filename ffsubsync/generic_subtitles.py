@@ -156,7 +156,8 @@ class GenericSubtitlesFile(object):
             ssaf = pysubs2.SSAFile()
             ssaf.events = subs
             ssaf.styles = self.styles
-            ssaf.info = self.info
+            if self.info is not None:
+                ssaf.info = self.info
             to_write = ssaf.to_string(out_format)
         else:
             raise NotImplementedError('unsupported output format: %s' % out_format)

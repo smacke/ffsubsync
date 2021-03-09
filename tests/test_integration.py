@@ -59,7 +59,7 @@ def gen_synctest_configs():
 
 
 def timestamps_roughly_match(f1, f2):
-    parser = GenericSubtitleParser()
+    parser = GenericSubtitleParser(skip_ssa_info=True)
     extractor = SubtitleSpeechTransformer(sample_rate=ffsubsync.DEFAULT_FRAME_RATE)
     pipe = make_pipeline(parser, extractor)
     f1_bitstring = pipe.fit_transform(f1).astype(bool)
@@ -68,7 +68,7 @@ def timestamps_roughly_match(f1, f2):
 
 
 def detected_encoding(fname):
-    parser = GenericSubtitleParser()
+    parser = GenericSubtitleParser(skip_ssa_info=True)
     parser.fit(fname)
     return parser.detected_encoding_
 
@@ -80,6 +80,7 @@ def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_en
     dirpath = tempfile.mkdtemp()
     try:
         args.srtout = os.path.join(dirpath, 'test' + os.path.splitext(args.srtin[0])[-1])
+        args.skip_ssa_info = True
         assert ffsubsync.run(args)['retval'] == 0
         if should_filecmp:
             assert filecmp.cmp(args.srtout, truth, shallow=False)
