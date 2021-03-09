@@ -48,7 +48,8 @@ class SubtitleScaler(SubsMixin, TransformerMixin):
             scaled_subs,
             sub_format=subs.sub_format,
             encoding=subs.encoding,
-            styles=subs.styles
+            styles=subs.styles,
+            info=subs.info
         )
         return self
 
