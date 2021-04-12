@@ -31,7 +31,7 @@ setup(
     long_description=read_file('README.md'),
     long_description_content_type='text/markdown',
     url='https://github.com/smacke/ffsubsync',
-    packages=find_packages(exclude=['docs', 'html']),
+    packages=find_packages(exclude=['docs']),
     include_package_data=True,
     install_requires=requirements,
     entry_points={
