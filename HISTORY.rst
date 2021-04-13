@@ -186,3 +186,7 @@ History
     * Have webrtcvad use '0' as the non speech label instead of 0.5;
     * Allow the vad non speech label to be specified via the --non-speech-label command line parameter;
     * Don't try to infer framerate ratio based on length between first and last speech frames for non-subtitle speech detection;
+
+0.4.12 (2021-04-13)
+-------------------
+* Pin auditok to 0.1.5 to avoid API-breaking change
