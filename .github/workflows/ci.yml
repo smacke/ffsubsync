@@ -45,8 +45,18 @@ jobs:
         flake8 . --exit-zero  
     - name: Run unit tests with pytest
       run: |
-        pytest -v -m 'not integration' tests/
+        pytest --cov-report= --cov=ffsubsync -v -m 'not integration' tests/
     - name: Run integration tests with pytest
       if: matrix.os == 'ubuntu-latest'
       run: |
-        INTEGRATION=1 pytest -v -m 'integration' tests/
+        INTEGRATION=1 pytest --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'integration' tests/
+    - name: Upload coverage report
+      if: matrix.os == 'ubuntu-latest'
+      uses: codecov/codecov-action@v1
+      with:
+        token: '${{ secrets.CODECOV_TOKEN }}'
+        files: ./cov.xml
+        env_vars: PYTHON
+        name: codecov-umbrella
+        fail_ci_if_error: true
+        verbose: true

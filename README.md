@@ -71,8 +71,8 @@ yield suboptimal syncing behavior when a proper VAD can work
 well, but can be effective in some cases.
 
 The next step is to try different values for `--max-offset-seconds`. By default
-ffsubsync runs with `--max-offset-seconds=600`, since subititles are unlikely
-to be offset by more than 10 minutes in practice, and enforcing this constraint
+ffsubsync runs with `--max-offset-seconds=60`, since subititles are unlikely
+to be offset by more than 1 minute in practice, and enforcing this constraint
 typically leads to a better outcome. There may be some rare cases in which
 subtitles are more egregiously out of sync and where increasing this value can
 help.
