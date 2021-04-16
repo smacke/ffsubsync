@@ -14,7 +14,7 @@ deploy: build
 	./scripts/deploy.sh
 
 check:
-	INTEGRATION=1 pytest --cov=ffsubsync
+	INTEGRATION=1 pytest --cov-config=.coveragerc --cov=ffsubsync
 
 test: check
 tests: check
