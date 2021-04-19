@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: future_annotations -*-
 """
 This module borrows and adapts `Pipeline` from `sklearn.pipeline` and
 `TransformerMixin` from `sklearn.base` in the scikit-learn framework
@@ -8,14 +8,21 @@ is given as a comment above each class.
 """
 from collections import defaultdict
 from itertools import islice
+from typing import Any, Callable, Optional
+from typing_extensions import Protocol
+
+
+class TransformerProtocol(Protocol):
+    fit: Callable[..., TransformerProtocol]
+    transform: Callable[[TransformerProtocol, Any], Any]
 
 
 # Author: Gael Varoquaux <gael.varoquaux@normalesup.org>
 # License: BSD 3 clause
-class TransformerMixin(object):
+class TransformerMixin(TransformerProtocol):
     """Mixin class for all transformers."""
 
-    def fit_transform(self, X, y=None, **fit_params):
+    def fit_transform(self, X: Any, y: Optional[Any] = None, **fit_params: Any) -> Any:
         """
         Fit to data, then transform it.
         Fits transformer to X and y with optional parameters fit_params
@@ -35,6 +42,8 @@ class TransformerMixin(object):
         """
         # non-optimized default implementation; override when a better
         # method is possible for a given clustering algorithm
+        if len(fit_params) > 2:
+            raise ValueError('At most two kwargs supported')
         if y is None:
             # fit method of arity 1 (unsupervised transformation)
             return self.fit(X, **fit_params).transform(X)
@@ -49,7 +58,7 @@ class TransformerMixin(object):
 #         Alexandre Gramfort
 #         Lars Buitinck
 # License: BSD
-class Pipeline(object):
+class Pipeline:
     def __init__(self, steps, verbose=False):
         self.steps = steps
         self.verbose = verbose
@@ -97,7 +106,7 @@ class Pipeline(object):
             elif trans is not None and trans != 'passthrough':
                 yield idx, name, trans
 
-    def __len__(self):
+    def __len__(self) -> int:
         """
         Returns the length of the Pipeline
         """
@@ -320,7 +329,7 @@ def _name_estimators(estimators):
     return list(zip(names, estimators))
 
 
-def make_pipeline(*steps, **kwargs):
+def make_pipeline(*steps, **kwargs) -> Pipeline:
     """Construct a Pipeline from the given estimators.
 
     This is a shorthand for the Pipeline constructor; it does not require, and

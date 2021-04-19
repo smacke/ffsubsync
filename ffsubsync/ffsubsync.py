@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# -*- coding: future_annotations -*-
 import argparse
 from datetime import datetime
 import logging
@@ -7,36 +7,37 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import cast, Any, Callable, Dict, Optional, Union
 
 import numpy as np
 
-from .aligners import FFTAligner, MaxScoreAligner, FailedToFindAlignmentException
-from .constants import *
-from .ffmpeg_utils import ffmpeg_bin_path
-from .sklearn_shim import Pipeline
-from .speech_transformers import (
+from ffsubsync.aligners import FFTAligner, MaxScoreAligner, FailedToFindAlignmentException
+from ffsubsync.constants import *
+from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
+from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
+from ffsubsync.speech_transformers import (
     VideoSpeechTransformer,
     DeserializeSpeechTransformer,
     make_subtitle_speech_pipeline
 )
-from .subtitle_parser import make_subtitle_parser
-from .subtitle_transformers import SubtitleMerger, SubtitleShifter
-from .version import get_version
+from ffsubsync.subtitle_parser import make_subtitle_parser
+from ffsubsync.subtitle_transformers import SubtitleMerger, SubtitleShifter
+from ffsubsync.version import get_version
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
-def override(args, **kwargs):
+def override(args: argparse.Namespace, **kwargs: Any) -> Dict[str, Any]:
     args_dict = dict(args.__dict__)
     args_dict.update(kwargs)
     return args_dict
 
 
-def _ref_format(ref_fname):
+def _ref_format(ref_fname: str) -> str:
     return ref_fname[-3:]
 
 
-def make_test_case(args, npy_savename, sync_was_successful):
+def make_test_case(args: argparse.Namespace, npy_savename: Optional[str], sync_was_successful: bool) -> int:
     if npy_savename is None:
         raise ValueError('need non-null npy_savename')
     tar_dir = '{}.{}'.format(
@@ -75,18 +76,18 @@ def make_test_case(args, npy_savename, sync_was_successful):
     return 0
 
 
-def get_srt_pipe_maker(args, srtin):
+def get_srt_pipe_maker(args: argparse.Namespace, srtin: Optional[str]) -> Callable[[float], Pipeline]:
     if srtin is None:
         srtin_format = 'srt'
     else:
         srtin_format = os.path.splitext(srtin)[-1][1:]
     parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
-    return lambda scale_factor: make_subtitle_speech_pipeline(
+    return lambda scale_factor: cast(Pipeline, make_subtitle_speech_pipeline(
         **override(args, scale_factor=scale_factor, parser=parser)
-    )
+    ))
 
 
-def get_framerate_ratios_to_try(args):
+def get_framerate_ratios_to_try(args: argparse.Namespace) -> List[Optional[float]]:
     if args.no_fix_framerate:
         return []
     else:
@@ -98,7 +99,7 @@ def get_framerate_ratios_to_try(args):
         return framerate_ratios
 
 
-def try_sync(args, reference_pipe, result):
+def try_sync(args: argparse.Namespace, reference_pipe, result) -> bool:
     sync_was_successful = True
     exc = None
     try:
@@ -141,7 +142,7 @@ def try_sync(args, reference_pipe, result):
             logger.info('score: %.3f', best_score)
             logger.info('offset seconds: %.3f', offset_seconds)
             logger.info('framerate scale factor: %.3f', scale_step.scale_factor)
-            output_steps = [('shift', SubtitleShifter(offset_seconds))]
+            output_steps: List[Tuple[str, TransformerMixin]] = [('shift', SubtitleShifter(offset_seconds))]
             if args.merge_with_reference:
                 output_steps.append(
                     ('merge', SubtitleMerger(reference_pipe.named_steps['parse'].subs_))
@@ -169,18 +170,18 @@ def try_sync(args, reference_pipe, result):
         return sync_was_successful
 
 
-def make_reference_pipe(args):
+def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
     ref_format = _ref_format(args.reference)
     if ref_format in SUBTITLE_EXTENSIONS:
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
-        return make_subtitle_speech_pipeline(
+        return cast(Pipeline, make_subtitle_speech_pipeline(
             fmt=ref_format,
             **override(
                 args,
                 encoding=args.reference_encoding or DEFAULT_ENCODING
             )
-        )
+        ))
     elif ref_format in ('npy', 'npz'):
         if args.vad is not None:
             logger.warning('Vad specified, but reference was not a movie')
@@ -209,7 +210,7 @@ def make_reference_pipe(args):
         ])
 
 
-def extract_subtitles_from_reference(args):
+def extract_subtitles_from_reference(args: argparse.Namespace) -> int:
     stream = args.extract_subs_from_stream
     if not stream.startswith('0:s:'):
         stream = '0:s:{}'.format(stream)
@@ -239,7 +240,7 @@ def extract_subtitles_from_reference(args):
     return retcode
 
 
-def validate_args(args):
+def validate_args(args: argparse.Namespace) -> None:
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
     if len(args.srtin) > 1 and not args.overwrite_input:
@@ -269,7 +270,7 @@ def validate_args(args):
             raise ValueError('stream specified for reference subtitle extraction; -i flag for sync input not allowed')
 
 
-def validate_file_permissions(args):
+def validate_file_permissions(args: argparse.Namespace) -> None:
     error_string_template = 'unable to {action} {file}; try ensuring file exists and has correct permissions'
     if not os.access(args.reference, os.R_OK):
         raise ValueError(error_string_template.format(action='read reference', file=args.reference))
@@ -284,7 +285,7 @@ def validate_file_permissions(args):
             raise ValueError('unable to write test case file archive %s (try checking permissions)' % npy_savename)
 
 
-def run(args):
+def run(args: argparse.Namespace) -> Dict[str, Any]:
     result = {
         'retval': 0,
         'offset_seconds': None,
@@ -347,7 +348,7 @@ def run(args):
     return result
 
 
-def add_main_args_for_cli(parser):
+def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         'reference',
         help='Reference (video, subtitles, or a numpy array with VAD speech) to which to synchronize input subtitles.'
@@ -371,7 +372,7 @@ def add_main_args_for_cli(parser):
     )
 
 
-def add_cli_only_args(parser):
+def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('-v', '--version', action='version',
                         version='{package} {version}'.format(package=__package__, version=get_version()))
     parser.add_argument('--overwrite-input', action='store_true',
@@ -428,14 +429,14 @@ def add_cli_only_args(parser):
     parser.add_argument('--gss', action='store_true', help=argparse.SUPPRESS)
 
 
-def make_parser():
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Synchronize subtitles with video.')
     add_main_args_for_cli(parser)
     add_cli_only_args(parser)
     return parser
 
 
-def main():
+def main() -> int:
     parser = make_parser()
     args = parser.parse_args()
     return run(args)['retval']

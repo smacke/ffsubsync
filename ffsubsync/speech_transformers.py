@@ -1,36 +1,38 @@
-# -*- coding: utf-8 -*-
+# -*- coding: future_annotations -*-
 from contextlib import contextmanager
 import logging
 import io
 import subprocess
 import sys
 from datetime import timedelta
+from typing import cast, Callable, Dict, Optional, Union
 
 import ffmpeg
 import numpy as np
-from .sklearn_shim import TransformerMixin
-from .sklearn_shim import Pipeline
 import tqdm
 
-from .constants import *
-from .ffmpeg_utils import ffmpeg_bin_path, subprocess_args
-from .subtitle_parser import make_subtitle_parser
-from .subtitle_transformers import SubtitleScaler
+from ffsubsync.constants import *
+from ffsubsync.ffmpeg_utils import ffmpeg_bin_path, subprocess_args
+from ffsubsync.generic_subtitles import GenericSubtitle
+from ffsubsync.sklearn_shim import TransformerMixin
+from ffsubsync.sklearn_shim import Pipeline
+from ffsubsync.subtitle_parser import make_subtitle_parser
+from ffsubsync.subtitle_transformers import SubtitleScaler
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def make_subtitle_speech_pipeline(
-        fmt='srt',
-        encoding=DEFAULT_ENCODING,
-        caching=False,
-        max_subtitle_seconds=DEFAULT_MAX_SUBTITLE_SECONDS,
-        start_seconds=DEFAULT_START_SECONDS,
-        scale_factor=DEFAULT_SCALE_FACTOR,
-        parser=None,
-        **kwargs
-):
+    fmt: str = 'srt',
+    encoding: str = DEFAULT_ENCODING,
+    caching: bool = False,
+    max_subtitle_seconds: int = DEFAULT_MAX_SUBTITLE_SECONDS,
+    start_seconds: int = DEFAULT_START_SECONDS,
+    scale_factor: float = DEFAULT_SCALE_FACTOR,
+    parser=None,
+    **kwargs
+) -> Union[Pipeline, Callable[[float], Pipeline]]:
     if parser is None:
         parser = make_subtitle_parser(
             fmt,
@@ -60,7 +62,9 @@ def make_subtitle_speech_pipeline(
         return subpipe_maker(scale_factor)
 
 
-def _make_auditok_detector(sample_rate, frame_rate, non_speech_label):
+def _make_auditok_detector(
+    sample_rate: int, frame_rate: int, non_speech_label: float
+) -> Callable[[bytes], np.ndarray]:
     try:
         from auditok import \
             BufferAudioSource, ADSFactory, AudioEnergyValidator, StreamTokenizer
@@ -86,7 +90,7 @@ def _make_auditok_detector(sample_rate, frame_rate, non_speech_label):
         max_continuous_silence=0.25 * sample_rate
     )
 
-    def _detect(asegment):
+    def _detect(asegment: bytes) -> np.ndarray:
         asource = BufferAudioSource(
             data_buffer=asegment,
             sampling_rate=frame_rate,
@@ -107,7 +111,9 @@ def _make_auditok_detector(sample_rate, frame_rate, non_speech_label):
     return _detect
 
 
-def _make_webrtcvad_detector(sample_rate, frame_rate, non_speech_label):
+def _make_webrtcvad_detector(
+    sample_rate: int, frame_rate: int, non_speech_label: float
+) -> Callable[[bytes], np.ndarray]:
     import webrtcvad
     vad = webrtcvad.Vad()
     vad.set_mode(3)  # set non-speech pruning aggressiveness from 0 to 3
@@ -115,7 +121,7 @@ def _make_webrtcvad_detector(sample_rate, frame_rate, non_speech_label):
     frames_per_window = int(window_duration * frame_rate + 0.5)
     bytes_per_frame = 2
 
-    def _detect(asegment):
+    def _detect(asegment: bytes) -> np.ndarray:
         media_bstring = []
         failures = 0
         for start in range(0, len(asegment) // bytes_per_frame,
@@ -136,18 +142,18 @@ def _make_webrtcvad_detector(sample_rate, frame_rate, non_speech_label):
     return _detect
 
 
-class ComputeSpeechFrameBoundariesMixin(object):
-    def __init__(self):
-        self.start_frame_ = None
-        self.end_frame_ = None
+class ComputeSpeechFrameBoundariesMixin:
+    def __init__(self) -> None:
+        self.start_frame_: Optional[int] = None
+        self.end_frame_: Optional[int] = None
 
     @property
-    def num_frames(self):
+    def num_frames(self) -> Optional[int]:
         if self.start_frame_ is None or self.end_frame_ is None:
             return None
         return self.end_frame_ - self.start_frame_
 
-    def fit_boundaries(self, speech_frames):
+    def fit_boundaries(self, speech_frames: np.ndarray) -> ComputeSpeechFrameBoundariesMixin:
         nz = np.nonzero(speech_frames > 0.5)[0]
         if len(nz) > 0:
             self.start_frame_ = np.min(nz)
@@ -157,27 +163,35 @@ class ComputeSpeechFrameBoundariesMixin(object):
 
 class VideoSpeechTransformer(TransformerMixin):
     def __init__(
-        self, vad, sample_rate, frame_rate, non_speech_label, start_seconds=0,
-        ffmpeg_path=None, ref_stream=None, vlc_mode=False, gui_mode=False
-    ):
+        self,
+        vad: str,
+        sample_rate: int,
+        frame_rate: int,
+        non_speech_label: float,
+        start_seconds: int = 0,
+        ffmpeg_path: Optional[str] = None,
+        ref_stream: Optional[str] = None,
+        vlc_mode: bool = False,
+        gui_mode: bool = False,
+    ) -> None:
         super(VideoSpeechTransformer, self).__init__()
-        self.vad = vad
-        self.sample_rate = sample_rate
-        self.frame_rate = frame_rate
-        self._non_speech_label = non_speech_label
-        self.start_seconds = start_seconds
-        self.ffmpeg_path = ffmpeg_path
-        self.ref_stream = ref_stream
-        self.vlc_mode = vlc_mode
-        self.gui_mode = gui_mode
-        self.video_speech_results_ = None
+        self.vad: str = vad
+        self.sample_rate: int = sample_rate
+        self.frame_rate: int = frame_rate
+        self._non_speech_label: float = non_speech_label
+        self.start_seconds: int = start_seconds
+        self.ffmpeg_path: Optional[str] = ffmpeg_path
+        self.ref_stream: Optional[str] = ref_stream
+        self.vlc_mode: bool = vlc_mode
+        self.gui_mode: bool = gui_mode
+        self.video_speech_results_: Optional[np.ndarray] = None
 
-    def try_fit_using_embedded_subs(self, fname):
+    def try_fit_using_embedded_subs(self, fname: str) -> None:
         embedded_subs = []
         embedded_subs_times = []
         if self.ref_stream is None:
             # check first 5; should cover 99% of movies
-            streams_to_try = map('0:s:{}'.format, range(5))
+            streams_to_try: List[str] = list(map('0:s:{}'.format, range(5)))
         else:
             streams_to_try = [self.ref_stream]
         for stream in streams_to_try:
@@ -194,7 +208,7 @@ class VideoSpeechTransformer(TransformerMixin):
             output = io.BytesIO(process.communicate()[0])
             if process.returncode != 0:
                 break
-            pipe = make_subtitle_speech_pipeline(start_seconds=self.start_seconds).fit(output)
+            pipe = cast(Pipeline, make_subtitle_speech_pipeline(start_seconds=self.start_seconds)).fit(output)
             speech_step = pipe.steps[-1][1]
             embedded_subs.append(speech_step)
             embedded_subs_times.append(speech_step.max_time_)
@@ -208,7 +222,7 @@ class VideoSpeechTransformer(TransformerMixin):
         subs_to_use = embedded_subs[int(np.argmax(embedded_subs_times))]
         self.video_speech_results_ = subs_to_use.subtitle_speech_results_
 
-    def fit(self, fname, *_):
+    def fit(self, fname: str, *_) -> VideoSpeechTransformer:
         if 'subs' in self.vad and (self.ref_stream is None or self.ref_stream.startswith('0:s:')):
             try:
                 logger.info('Checking video for subtitles stream...')
@@ -263,7 +277,7 @@ class VideoSpeechTransformer(TransformerMixin):
         should_print_redirected_stderr = self.gui_mode
         if self.gui_mode:
             try:
-                from contextlib import redirect_stderr
+                from contextlib import redirect_stderr  # type: ignore
                 tqdm_extra_args['file'] = sys.stdout
             except ImportError:
                 should_print_redirected_stderr = False
@@ -295,11 +309,11 @@ class VideoSpeechTransformer(TransformerMixin):
         self.video_speech_results_ = np.concatenate(media_bstring)
         return self
 
-    def transform(self, *_):
+    def transform(self, *_) -> np.ndarray:
         return self.video_speech_results_
 
 
-_PAIRED_NESTER = {
+_PAIRED_NESTER: Dict[str, str] = {
     '(': ')',
     '{': '}',
     '[': ']',
@@ -309,7 +323,7 @@ _PAIRED_NESTER = {
 
 
 # TODO: need way better metadata detector
-def _is_metadata(content, is_beginning_or_end):
+def _is_metadata(content: str, is_beginning_or_end: bool) -> bool:
     content = content.strip()
     if len(content) == 0:
         return True
@@ -324,15 +338,15 @@ def _is_metadata(content, is_beginning_or_end):
 
 
 class SubtitleSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
-    def __init__(self, sample_rate, start_seconds=0, framerate_ratio=1.):
+    def __init__(self, sample_rate: int, start_seconds: int = 0, framerate_ratio: float = 1.) -> None:
         super(SubtitleSpeechTransformer, self).__init__()
-        self.sample_rate = sample_rate
-        self.start_seconds = start_seconds
-        self.framerate_ratio = framerate_ratio
-        self.subtitle_speech_results_ = None
-        self.max_time_ = None
+        self.sample_rate: int = sample_rate
+        self.start_seconds: int = start_seconds
+        self.framerate_ratio: float = framerate_ratio
+        self.subtitle_speech_results_: Optional[np.ndarray] = None
+        self.max_time_: Optional[int] = None
 
-    def fit(self, subs, *_):
+    def fit(self, subs: List[GenericSubtitle], *_):
         max_time = 0
         for sub in subs:
             max_time = max(max_time, sub.end.total_seconds())

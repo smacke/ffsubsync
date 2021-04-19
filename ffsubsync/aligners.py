@@ -1,15 +1,15 @@
-# -*- coding: utf-8 -*- 
+# -*- coding: future_annotations -*- 
 import logging
 import math
+from typing import List, Optional, Tuple, Type, Union
 
 import numpy as np
 
-from .constants import FRAMERATE_RATIOS
-from .golden_section_search import gss
-from .sklearn_shim import TransformerMixin
+from ffsubsync.golden_section_search import gss
+from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class FailedToFindAlignmentException(Exception):
@@ -17,13 +17,13 @@ class FailedToFindAlignmentException(Exception):
 
 
 class FFTAligner(TransformerMixin):
-    def __init__(self, max_offset_samples=None):
-        self.max_offset_samples = max_offset_samples
-        self.best_offset_ = None
-        self.best_score_ = None
-        self.get_score_ = False
+    def __init__(self, max_offset_samples: Optional[int] = None) -> None:
+        self.max_offset_samples: Optional[int] = max_offset_samples
+        self.best_offset_: Optional[int] = None
+        self.best_score_: Optional[float] = None
+        self.get_score_: bool = False
 
-    def _zero_out_extreme_offsets(self, convolve, substring):
+    def _zero_out_extreme_offsets(self, convolve: np.ndarray, substring: np.ndarray) -> np.ndarray:
         convolve = np.copy(convolve)
         if self.max_offset_samples is None:
             return convolve
@@ -31,12 +31,12 @@ class FFTAligner(TransformerMixin):
         convolve[:offset_to_index(-self.max_offset_samples)] = convolve[offset_to_index(self.max_offset_samples):] = 0
         return convolve
 
-    def _compute_argmax(self, convolve, substring):
+    def _compute_argmax(self, convolve: np.ndarray, substring: np.ndarray) -> None:
         best_idx = np.argmax(convolve)
         self.best_offset_ = len(convolve) - 1 - best_idx - len(substring)
         self.best_score_ = convolve[best_idx]
 
-    def fit(self, refstring, substring, get_score=False):
+    def fit(self, refstring, substring, get_score: bool = False) -> FFTAligner:
         refstring, substring = [
             list(map(int, s))
             if isinstance(s, str) else s
@@ -56,7 +56,7 @@ class FFTAligner(TransformerMixin):
         self.get_score_ = get_score
         return self
 
-    def transform(self, *_):
+    def transform(self, *_) -> Union[int, Tuple[float, int]]:
         if self.get_score_:
             return self.best_score_, self.best_offset_
         else:
@@ -64,18 +64,24 @@ class FFTAligner(TransformerMixin):
 
 
 class MaxScoreAligner(TransformerMixin):
-    def __init__(self, base_aligner, srtin=None, sample_rate=None, max_offset_seconds=None):
-        self.srtin = srtin
+    def __init__(
+        self,
+        base_aligner: Union[FFTAligner, Type[FFTAligner]],
+        srtin: Optional[str] = None,
+        sample_rate=None,
+        max_offset_seconds=None
+    ) -> None:
+        self.srtin: Optional[str] = srtin
         if sample_rate is None or max_offset_seconds is None:
-            self.max_offset_samples = None
+            self.max_offset_samples: Optional[int] = None
         else:
             self.max_offset_samples = abs(int(max_offset_seconds * sample_rate))
         if isinstance(base_aligner, type):
-            self.base_aligner = base_aligner(max_offset_samples=self.max_offset_samples)
+            self.base_aligner: FFTAligner = base_aligner(max_offset_samples=self.max_offset_samples)
         else:
             self.base_aligner = base_aligner
-        self.max_offset_seconds = max_offset_seconds
-        self._scores = []
+        self.max_offset_seconds: Optional[int] = max_offset_seconds
+        self._scores: List[Tuple[Tuple[float, int], Pipeline]] = []
 
     def fit_gss(self, refstring, subpipe_maker):
         def opt_func(framerate_ratio, is_last_iter):
@@ -89,7 +95,7 @@ class MaxScoreAligner(TransformerMixin):
         gss(opt_func, 0.9, 1.1)
         return self
 
-    def fit(self, refstring, subpipes):
+    def fit(self, refstring, subpipes: Union[Pipeline, List[Pipeline]]) -> MaxScoreAligner:
         if not isinstance(subpipes, list):
             subpipes = [subpipes]
         for subpipe in subpipes:
@@ -108,7 +114,7 @@ class MaxScoreAligner(TransformerMixin):
             ))
         return self
 
-    def transform(self, *_):
+    def transform(self, *_) -> Tuple[Tuple[float, float], Pipeline]:
         scores = self._scores
         if self.max_offset_samples is not None:
             scores = list(filter(lambda s: abs(s[0][1]) <= self.max_offset_samples, scores))

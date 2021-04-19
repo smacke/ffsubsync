@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*- 
+# -*- coding: future_annotations -*- 
 import itertools
 from io import BytesIO
 from datetime import timedelta

@@ -13,8 +13,13 @@ bump:
 deploy: build
 	./scripts/deploy.sh
 
-check:
+typecheck:
+	mypy ffsubsync
+
+check_no_typing:
 	INTEGRATION=1 pytest --cov-config=.coveragerc --cov=ffsubsync
+
+check: typecheck check_no_typing
 
 test: check
 tests: check

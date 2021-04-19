@@ -2,7 +2,7 @@ argparse
 auditok==0.1.5
 cchardet
 ffmpeg-python
-future
+future_annotations
 numpy>=1.12.0
 pysubs2
 rich;python_version>='3.6'

@@ -1,13 +1,13 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import argparse
-import json
 import subprocess
 import sys
 
 from ffsubsync.version import make_version_tuple
 
 
-def main(args):
+def main(*_):
     components = list(make_version_tuple())
     components[-1] += 1
     version = '.'.join(str(c) for c in components)

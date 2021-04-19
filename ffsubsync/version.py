@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: future_annotations -*-
 import os
 from .constants import SUBSYNC_RESOURCES_ENV_MAGIC
 from ._version import get_versions

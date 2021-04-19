@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
+# -*- coding: future_annotations -*-
 import copy
 from datetime import timedelta
 import logging
 import os
+from typing import cast, Any, List, Optional
 
 import pysubs2
 import srt
@@ -13,22 +14,24 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class SubsMixin(object):
-    def __init__(self, subs=None):
-        self.subs_ = subs
+class SubsMixin:
+    def __init__(self, subs: Optional[GenericSubtitlesFile] = None) -> None:
+        self.subs_: Optional[GenericSubtitlesFile] = subs
 
-    def set_encoding(self, encoding):
+    def set_encoding(self, encoding: str) -> SubsMixin:
         self.subs_.set_encoding(encoding)
         return self
 
 
-class GenericSubtitle(object):
+class GenericSubtitle:
     def __init__(self, start, end, inner):
         self.start = start
         self.end = end
         self.inner = inner
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, GenericSubtitle):
+            return False
         eq = True
         eq = eq and self.start == other.start
         eq = eq and self.end == other.end
@@ -36,7 +39,7 @@ class GenericSubtitle(object):
         return eq
 
     @property
-    def content(self):
+    def content(self) -> str:
         if isinstance(self.inner, srt.Subtitle):
             ret = self.inner.content
         elif isinstance(self.inner, pysubs2.SSAEvent):
@@ -71,7 +74,7 @@ class GenericSubtitle(object):
             raise NotImplementedError('unsupported subtitle type: %s' % type(self.inner))
 
     @classmethod
-    def wrap_inner_subtitle(cls, sub):
+    def wrap_inner_subtitle(cls, sub) -> GenericSubtitle:
         if isinstance(sub, srt.Subtitle):
             return cls(sub.start, sub.end, sub)
         elif isinstance(sub, pysubs2.SSAEvent):
@@ -84,37 +87,37 @@ class GenericSubtitle(object):
             raise NotImplementedError('unsupported subtitle type: %s' % type(sub))
 
 
-class GenericSubtitlesFile(object):
-    def __init__(self, subs, *args, **kwargs):
-        sub_format = kwargs.pop('sub_format', None)
+class GenericSubtitlesFile:
+    def __init__(self, subs: List[GenericSubtitle], *_, **kwargs: Any):
+        sub_format: str = cast(str, kwargs.pop('sub_format', None))
         if sub_format is None:
             raise ValueError('format must be specified')
-        encoding = kwargs.pop('encoding', None)
+        encoding: str = cast(str, kwargs.pop('encoding', None))
         if encoding is None:
             raise ValueError('encoding must be specified')
-        self.subs_ = subs
-        self._sub_format = sub_format
-        self._encoding = encoding
+        self.subs_: List[GenericSubtitle] = subs
+        self._sub_format: str = sub_format
+        self._encoding: str = encoding
         self._styles = kwargs.pop('styles', None)
         self._info = kwargs.pop('info', None)
 
-    def set_encoding(self, encoding):
+    def set_encoding(self, encoding: str) -> GenericSubtitlesFile:
         if encoding != 'same':
             self._encoding = encoding
         return self
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.subs_)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int) -> GenericSubtitle:
         return self.subs_[item]
 
     @property
-    def sub_format(self):
+    def sub_format(self) -> str:
         return self._sub_format
 
     @property
-    def encoding(self):
+    def encoding(self) -> str:
         return self._encoding
 
     @property
@@ -129,7 +132,7 @@ class GenericSubtitlesFile(object):
         for sub in self.subs_:
             yield sub.resolve_inner_timestamps()
 
-    def offset(self, td):
+    def offset(self, td: timedelta) -> GenericSubtitlesFile:
         offset_subs = []
         for sub in self.subs_:
             offset_subs.append(
@@ -143,7 +146,7 @@ class GenericSubtitlesFile(object):
             info=self.info
         )
 
-    def write_file(self, fname):
+    def write_file(self, fname: str) -> None:
         # TODO: converter to go between self.subs_format and out_format
         if fname is None:
             out_format = self._sub_format

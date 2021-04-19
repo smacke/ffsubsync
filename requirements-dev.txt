@@ -1,5 +1,5 @@
-# testing
 flake8
+mypy
 pytest
 pytest-cov
 pyyaml;python_version!="3.4"
