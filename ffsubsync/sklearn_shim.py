@@ -42,8 +42,6 @@ class TransformerMixin(TransformerProtocol):
         """
         # non-optimized default implementation; override when a better
         # method is possible for a given clustering algorithm
-        if len(fit_params) > 2:
-            raise ValueError('At most two kwargs supported')
         if y is None:
             # fit method of arity 1 (unsupervised transformation)
             return self.fit(X, **fit_params).transform(X)
