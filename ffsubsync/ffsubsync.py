@@ -76,15 +76,17 @@ def make_test_case(args: argparse.Namespace, npy_savename: Optional[str], sync_w
     return 0
 
 
-def get_srt_pipe_maker(args: argparse.Namespace, srtin: Optional[str]) -> Callable[[float], Pipeline]:
+def get_srt_pipe_maker(
+    args: argparse.Namespace, srtin: Optional[str]
+) -> Callable[[Optional[float]], Union[Pipeline, Callable[[float], Pipeline]]]:
     if srtin is None:
         srtin_format = 'srt'
     else:
         srtin_format = os.path.splitext(srtin)[-1][1:]
     parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
-    return lambda scale_factor: cast(Pipeline, make_subtitle_speech_pipeline(
+    return lambda scale_factor: make_subtitle_speech_pipeline(
         **override(args, scale_factor=scale_factor, parser=parser)
-    ))
+    )
 
 
 def get_framerate_ratios_to_try(args: argparse.Namespace) -> List[Optional[float]]:
@@ -99,7 +101,7 @@ def get_framerate_ratios_to_try(args: argparse.Namespace) -> List[Optional[float
         return framerate_ratios
 
 
-def try_sync(args: argparse.Namespace, reference_pipe, result) -> bool:
+def try_sync(args: argparse.Namespace, reference_pipe: Pipeline, result: Dict[str, Any]) -> bool:
     sync_was_successful = True
     exc = None
     try:
@@ -118,16 +120,14 @@ def try_sync(args: argparse.Namespace, reference_pipe, result) -> bool:
                 else:
                     srt_pipe.fit(srtin)
             if not args.skip_infer_framerate_ratio and hasattr(reference_pipe[-1], 'num_frames'):
-                inferred_framerate_ratio_from_length = float(reference_pipe[-1].num_frames) / srt_pipes[0][-1].num_frames
+                inferred_framerate_ratio_from_length = float(reference_pipe[-1].num_frames) / cast(Pipeline, srt_pipes[0])[-1].num_frames
                 logger.info('inferred frameratio ratio: %.3f' % inferred_framerate_ratio_from_length)
-                srt_pipes.append(srt_pipe_maker(inferred_framerate_ratio_from_length).fit(srtin))
+                srt_pipes.append(cast(Pipeline, srt_pipe_maker(inferred_framerate_ratio_from_length)).fit(srtin))
                 logger.info('...done')
             logger.info('computing alignments...')
             if args.skip_sync:
                 best_score = 0.
-                best_srt_pipe = srt_pipes[0]
-                if callable(best_srt_pipe):
-                    best_srt_pipe = best_srt_pipe(1.0).fit(srtin)
+                best_srt_pipe = cast(Pipeline, srt_pipes[0])
                 offset_samples = 0
             else:
                 (best_score, offset_samples), best_srt_pipe = MaxScoreAligner(
