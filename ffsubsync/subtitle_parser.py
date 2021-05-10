@@ -111,18 +111,20 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                     parsed_subs = pysubs2.SSAFile.from_string(decoded_subs)
                 else:
                     raise NotImplementedError('unsupported format: %s' % self.sub_format)
+                extra_generic_subtitle_file_kwargs = {}
+                if isinstance(parsed_subs, pysubs2.SSAFile):
+                    extra_generic_subtitle_file_kwargs.update(dict(
+                        styles=parsed_subs.styles,
+                        fonts_opaque=parsed_subs.fonts_opaque,
+                        info=parsed_subs.info if not self._skip_ssa_info else None,
+                    ))
                 self.subs_ = GenericSubtitlesFile(
                     _preprocess_subs(parsed_subs,
                                      max_subtitle_seconds=self.max_subtitle_seconds,
                                      start_seconds=self.start_seconds),
                     sub_format=self.sub_format,
                     encoding=encoding,
-                    styles=parsed_subs.styles if isinstance(parsed_subs, pysubs2.SSAFile) else None,
-                    info=(
-                        parsed_subs.info
-                        if not self._skip_ssa_info and isinstance(parsed_subs, pysubs2.SSAFile)
-                        else None
-                    )
+                    **extra_generic_subtitle_file_kwargs,
                 )
                 self.fit_fname = '<stdin>' if fname is None else fname
                 if len(encodings_to_try) > 1:

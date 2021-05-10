@@ -19,7 +19,7 @@ class SubtitleShifter(SubsMixin, TransformerMixin):
         else:
             self.td_seconds = td_seconds
 
-    def fit(self, subs, *_):
+    def fit(self, subs: GenericSubtitlesFile, *_):
         self.subs_ = subs.offset(self.td_seconds)
         return self
 
@@ -33,7 +33,7 @@ class SubtitleScaler(SubsMixin, TransformerMixin):
         super(SubsMixin, self).__init__()
         self.scale_factor = scale_factor
 
-    def fit(self, subs, *_):
+    def fit(self, subs: GenericSubtitlesFile, *_):
         scaled_subs = []
         for sub in subs:
             scaled_subs.append(
@@ -44,13 +44,7 @@ class SubtitleScaler(SubsMixin, TransformerMixin):
                     sub.inner
                 )
             )
-        self.subs_ = GenericSubtitlesFile(
-            scaled_subs,
-            sub_format=subs.sub_format,
-            encoding=subs.encoding,
-            styles=subs.styles,
-            info=subs.info
-        )
+        self.subs_ = subs.clone_props_for_subs(scaled_subs)
         return self
 
     def transform(self, *_):
@@ -64,7 +58,7 @@ class SubtitleMerger(SubsMixin, TransformerMixin):
         self.reference_subs = reference_subs
         self.first = first
 
-    def fit(self, output_subs, *_):
+    def fit(self, output_subs: GenericSubtitlesFile, *_):
         def _merger_gen(a, b):
             ita, itb = iter(a), iter(b)
             cur_a = next(ita, None)
@@ -125,11 +119,7 @@ class SubtitleMerger(SubsMixin, TransformerMixin):
             first, second = output_subs, self.reference_subs
         for merged in _merger_gen(first, second):
             merged_subs.append(merged)
-        self.subs_ = GenericSubtitlesFile(
-            merged_subs,
-            sub_format=output_subs.sub_format,
-            encoding=output_subs.encoding
-        )
+        self.subs_ = output_subs.clone_props_for_subs(merged_subs)
         return self
 
     def transform(self, *_):

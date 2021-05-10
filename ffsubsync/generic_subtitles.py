@@ -3,7 +3,7 @@ import copy
 from datetime import timedelta
 import logging
 import os
-from typing import cast, Any, List, Optional
+from typing import cast, Any, Dict, Iterator, List, Optional
 
 import pysubs2
 import srt
@@ -98,8 +98,9 @@ class GenericSubtitlesFile:
         self.subs_: List[GenericSubtitle] = subs
         self._sub_format: str = sub_format
         self._encoding: str = encoding
-        self._styles = kwargs.pop('styles', None)
-        self._info = kwargs.pop('info', None)
+        self._styles: Optional[Dict[str, pysubs2.SSAStyle]] = kwargs.pop('styles', None)
+        self._fonts_opaque: Optional[Dict[str, Any]] = kwargs.pop('fonts_opaque', None)
+        self._info: Optional[Dict[str, str]] = kwargs.pop('info', None)
 
     def set_encoding(self, encoding: str) -> GenericSubtitlesFile:
         if encoding != 'same':
@@ -112,21 +113,18 @@ class GenericSubtitlesFile:
     def __getitem__(self, item: int) -> GenericSubtitle:
         return self.subs_[item]
 
-    @property
-    def sub_format(self) -> str:
-        return self._sub_format
+    def __iter__(self) -> Iterator[GenericSubtitle]:
+        return iter(self.subs_)
 
-    @property
-    def encoding(self) -> str:
-        return self._encoding
-
-    @property
-    def styles(self):
-        return self._styles
-
-    @property
-    def info(self):
-        return self._info
+    def clone_props_for_subs(self, new_subs: List[GenericSubtitle]) -> GenericSubtitlesFile:
+        return GenericSubtitlesFile(
+            new_subs,
+            sub_format=self._sub_format,
+            encoding=self._encoding,
+            styles=self._styles,
+            fonts_opaque=self._fonts_opaque,
+            info=self._info,
+        )
 
     def gen_raw_resolved_subs(self):
         for sub in self.subs_:
@@ -138,13 +136,7 @@ class GenericSubtitlesFile:
             offset_subs.append(
                 GenericSubtitle(sub.start + td, sub.end + td, sub.inner)
             )
-        return GenericSubtitlesFile(
-            offset_subs,
-            sub_format=self.sub_format,
-            encoding=self.encoding,
-            styles=self.styles,
-            info=self.info
-        )
+        return self.clone_props_for_subs(offset_subs)
 
     def write_file(self, fname: str) -> None:
         # TODO: converter to go between self.subs_format and out_format
@@ -156,9 +148,12 @@ class GenericSubtitlesFile:
         if self._sub_format in ('ssa', 'ass'):
             ssaf = pysubs2.SSAFile()
             ssaf.events = subs
-            ssaf.styles = self.styles
-            if self.info is not None:
-                ssaf.info = self.info
+            if self._styles is not None:
+                ssaf.styles = self._styles
+            if self._info is not None:
+                ssaf.info = self._info
+            if self._fonts_opaque is not None:
+                ssaf.fonts_opaque = self._fonts_opaque
             to_write = ssaf.to_string(out_format)
         elif self._sub_format == 'srt' and out_format in ('ssa', 'ass'):
             to_write = pysubs2.SSAFile.from_string(srt.compose(subs)).to_string(out_format)
@@ -167,7 +162,7 @@ class GenericSubtitlesFile:
         else:
             raise NotImplementedError('unsupported output format: %s' % out_format)
 
-        to_write = to_write.encode(self.encoding)
+        to_write = to_write.encode(self._encoding)
         if six.PY3:
             with open(fname or sys.stdout.fileno(), 'wb') as f:
                 f.write(to_write)

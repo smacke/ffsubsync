@@ -190,3 +190,8 @@ History
 0.4.12 (2021-04-13)
 -------------------
 * Pin auditok to 0.1.5 to avoid API-breaking change
+
+0.4.13 (2021-05-10)
+-------------------
+* Support SSA embedded fonts using new pysubs2 'opaque_fonts' metadata;
+* Set min required pysubs2 version to 1.2.0 to ensure the aforementioned functionality is available;

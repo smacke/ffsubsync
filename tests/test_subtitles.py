@@ -55,10 +55,10 @@ def test_same_encoding(encoding):
     offseter = SubtitleShifter(1)
     pipe = make_pipeline(parser, offseter)
     pipe.fit(BytesIO(fake_srt))
-    assert parser.subs_.encoding == encoding
-    assert offseter.subs_.encoding == parser.subs_.encoding
-    assert offseter.subs_.set_encoding('same').encoding == encoding
-    assert offseter.subs_.set_encoding('utf-8').encoding == 'utf-8'
+    assert parser.subs_._encoding == encoding
+    assert offseter.subs_._encoding == parser.subs_._encoding
+    assert offseter.subs_.set_encoding('same')._encoding == encoding
+    assert offseter.subs_.set_encoding('utf-8')._encoding == 'utf-8'
 
 
 @pytest.mark.parametrize('offset', [1, 1.5, -2.3])
