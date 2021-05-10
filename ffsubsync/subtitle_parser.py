@@ -1,7 +1,8 @@
 # -*- coding: future_annotations -*-
 from datetime import timedelta
 import logging
-from typing import Any, List, Optional
+import sys
+from typing import Any, Optional
 
 try:
     import cchardet as chardet
@@ -115,7 +116,8 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                 if isinstance(parsed_subs, pysubs2.SSAFile):
                     extra_generic_subtitle_file_kwargs.update(dict(
                         styles=parsed_subs.styles,
-                        fonts_opaque=parsed_subs.fonts_opaque,
+                        # pysubs2 on Python >= 3.6 doesn't support this
+                        fonts_opaque=getattr(parsed_subs, 'fonts_opaque', None),
                         info=parsed_subs.info if not self._skip_ssa_info else None,
                     ))
                 self.subs_ = GenericSubtitlesFile(
