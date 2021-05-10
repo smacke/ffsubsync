@@ -195,3 +195,7 @@ History
 -------------------
 * Support SSA embedded fonts using new pysubs2 'opaque_fonts' metadata;
 * Set min required pysubs2 version to 1.2.0 to ensure the aforementioned functionality is available;
+
+0.4.14 (2021-05-10)
+-------------------
+* Hotfix for pysubs2 on Python 3.6;
