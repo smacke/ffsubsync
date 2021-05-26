@@ -199,3 +199,7 @@ History
 0.4.14 (2021-05-10)
 -------------------
 * Hotfix for pysubs2 on Python 3.6;
+
+0.4.15 (2021-05-25)
+-------------------
+* Make typing_extensions a requirement
