@@ -1,4 +1,5 @@
 # docs
 autodoc
+future_annotations
 sphinx-argparse
 sphinx-rtd-theme
