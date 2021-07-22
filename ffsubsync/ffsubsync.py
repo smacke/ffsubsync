@@ -243,12 +243,13 @@ def extract_subtitles_from_reference(args: argparse.Namespace) -> int:
 def validate_args(args: argparse.Namespace) -> None:
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
-    if len(args.srtin) > 1 and not args.overwrite_input:
-            raise ValueError('cannot specify multiple input srt files without overwriting')
-    if len(args.srtin) > 1 and args.make_test_case:
-            raise ValueError('cannot specify multiple input srt files for test cases')
-    if len(args.srtin) > 1 and args.gui_mode:
-            raise ValueError('cannot specify multiple input srt files in GUI mode')
+    if args.srtin:
+        if len(args.srtin) > 1 and not args.overwrite_input:
+                raise ValueError('cannot specify multiple input srt files without overwriting')
+        if len(args.srtin) > 1 and args.make_test_case:
+                raise ValueError('cannot specify multiple input srt files for test cases')
+        if len(args.srtin) > 1 and args.gui_mode:
+                raise ValueError('cannot specify multiple input srt files in GUI mode')
     if args.make_test_case and not args.gui_mode:  # this validation not necessary for gui mode
         if args.srtin is None or args.srtout is None:
             raise ValueError('need to specify input and output srt files for test cases')
@@ -274,9 +275,10 @@ def validate_file_permissions(args: argparse.Namespace) -> None:
     error_string_template = 'unable to {action} {file}; try ensuring file exists and has correct permissions'
     if not os.access(args.reference, os.R_OK):
         raise ValueError(error_string_template.format(action='read reference', file=args.reference))
-    for srtin in args.srtin:
-        if srtin is not None and not os.access(srtin, os.R_OK):
-            raise ValueError(error_string_template.format(action='read input subtitles', file=srtin))
+    if args.srtin:
+        for srtin in args.srtin:
+            if srtin is not None and not os.access(srtin, os.R_OK):
+                raise ValueError(error_string_template.format(action='read input subtitles', file=srtin))
     if args.srtout is not None and os.path.exists(args.srtout) and not os.access(args.srtout, os.W_OK):
         raise ValueError(error_string_template.format(action='write output subtitles', file=args.srtout))
     if args.make_test_case or args.serialize_speech:

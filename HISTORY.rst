@@ -203,3 +203,7 @@ History
 0.4.15 (2021-05-25)
 -------------------
 * Make typing_extensions a requirement
+
+0.4.16 (2021-07-22)
+-------------------
+* Fix a couple of validation bugs that prevented certain uncommon command line options from use;
