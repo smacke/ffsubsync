@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 invphi = (math.sqrt(5) - 1) / 2  # 1 / phi
 invphi2 = (3 - math.sqrt(5)) / 2  # 1 / phi^2
 
+
 def gss(f, a, b, tol=1e-4):
     """Golden-section search.
 

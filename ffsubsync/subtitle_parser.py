@@ -1,8 +1,7 @@
 # -*- coding: future_annotations -*-
 from datetime import timedelta
 import logging
-import sys
-from typing import Any, Optional
+from typing import TYPE_CHECKING
 
 try:
     import cchardet as chardet
@@ -16,8 +15,11 @@ from ffsubsync.constants import *
 from ffsubsync.file_utils import open_file
 from ffsubsync.generic_subtitles import GenericSubtitle, GenericSubtitlesFile, SubsMixin
 
+if TYPE_CHECKING:
+    from typing import Any, Optional
+
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def make_subtitle_parser(

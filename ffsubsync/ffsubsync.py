@@ -7,12 +7,24 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import cast, Any, Callable, Dict, Optional, Union
+from typing import cast, TYPE_CHECKING
 
 import numpy as np
 
 from ffsubsync.aligners import FFTAligner, MaxScoreAligner, FailedToFindAlignmentException
-from ffsubsync.constants import *
+from ffsubsync.constants import (
+    DEFAULT_APPLY_OFFSET_SECONDS,
+    DEFAULT_FRAME_RATE,
+    DEFAULT_MAX_OFFSET_SECONDS,
+    DEFAULT_MAX_SUBTITLE_SECONDS,
+    DEFAULT_NON_SPEECH_LABEL,
+    DEFAULT_START_SECONDS,
+    DEFAULT_VAD,
+    DEFAULT_ENCODING,
+    FRAMERATE_RATIOS,
+    SAMPLE_RATE,
+    SUBTITLE_EXTENSIONS,
+)
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
 from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
 from ffsubsync.speech_transformers import (
@@ -23,6 +35,10 @@ from ffsubsync.speech_transformers import (
 from ffsubsync.subtitle_parser import make_subtitle_parser
 from ffsubsync.subtitle_transformers import SubtitleMerger, SubtitleShifter
 from ffsubsync.version import get_version
+
+if TYPE_CHECKING:
+    from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -416,15 +432,17 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
                              'mismatch between reference and subtitles.')
     parser.add_argument('--serialize-speech', action='store_true',
                         help='If specified, serialize reference speech to a numpy array.')
-    parser.add_argument('--extract-subs-from-stream', default=None,
+    parser.add_argument('--extract-subs-from-stream',
+                        '--extract-subtitles-from-stream',
+                        default=None,
                         help='If specified, do not attempt sync; instead, just extract subtitles'
                              ' from the specified stream using the reference.')
     parser.add_argument(
         '--ffmpeg-path', '--ffmpegpath', default=None,
         help='Where to look for ffmpeg and ffprobe. Uses the system PATH by default.'
     )
-    parser.add_argument('--log-dir-path', default=None, help='Where to save ffsubsync.log file (must be an existing '
-                        'directory).')
+    parser.add_argument('--log-dir-path', default=None,
+                        help='Where to save ffsubsync.log file (must be an existing directory).')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--skip-sync', action='store_true', help=argparse.SUPPRESS)

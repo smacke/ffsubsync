@@ -1,5 +1,8 @@
 # -*- coding: future_annotations -*-
-from typing import List, Tuple
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import List, Tuple
 
 
 SUBSYNC_RESOURCES_ENV_MAGIC: str = "ffsubsync_resources_xj48gjdkl340"

@@ -4,10 +4,10 @@ import os
 import platform
 import subprocess
 
-from .constants import SUBSYNC_RESOURCES_ENV_MAGIC
+from ffsubsync.constants import SUBSYNC_RESOURCES_ENV_MAGIC
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 # ref: https://github.com/pyinstaller/pyinstaller/wiki/Recipe-subprocess

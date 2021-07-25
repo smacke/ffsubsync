@@ -6,7 +6,7 @@ import sys
 
 from gooey import Gooey, GooeyParser
 
-from .constants import (
+from ffsubsync.constants import (
     RELEASE_URL,
     WEBSITE,
     DEV_WEBSITE,
@@ -20,8 +20,8 @@ from .constants import (
 # set the env magic so that we look for resources in the right place
 if SUBSYNC_RESOURCES_ENV_MAGIC not in os.environ:
     os.environ[SUBSYNC_RESOURCES_ENV_MAGIC] = getattr(sys, '_MEIPASS', '')
-from .ffsubsync import run, add_cli_only_args
-from .version import get_version, update_available
+from ffsubsync.ffsubsync import run, add_cli_only_args
+from ffsubsync.version import get_version, update_available
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -1,7 +1,7 @@
 # -*- coding: future_annotations -*-
 import os
-from .constants import SUBSYNC_RESOURCES_ENV_MAGIC
-from ._version import get_versions
+from ffsubsync.constants import SUBSYNC_RESOURCES_ENV_MAGIC
+from ffsubsync._version import get_versions
 __version__ = get_versions()['version']
 del get_versions
 

@@ -3,12 +3,12 @@ import six
 import sys
 
 
-class open_file(object):
+class open_file:
     """
     Context manager that opens a filename and closes it on exit, but does
     nothing for file-like objects.
     """
-    def __init__(self, filename, *args, **kwargs):
+    def __init__(self, filename, *args, **kwargs) -> None:
         self.closing = kwargs.pop('closing', False)
         if filename is None:
             stream = sys.stdout if 'w' in args else sys.stdin

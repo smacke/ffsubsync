@@ -5,7 +5,7 @@ import io
 import subprocess
 import sys
 from datetime import timedelta
-from typing import cast, Callable, Dict, Optional, Union
+from typing import cast, TYPE_CHECKING
 
 import ffmpeg
 import numpy as np
@@ -18,6 +18,10 @@ from ffsubsync.sklearn_shim import TransformerMixin
 from ffsubsync.sklearn_shim import Pipeline
 from ffsubsync.subtitle_parser import make_subtitle_parser
 from ffsubsync.subtitle_transformers import SubtitleScaler
+
+if TYPE_CHECKING:
+    from typing import Callable, Dict, Optional, Union
+
 
 logging.basicConfig(level=logging.INFO)
 logger: logging.Logger = logging.getLogger(__name__)

@@ -3,12 +3,11 @@ from datetime import timedelta
 import logging
 import numbers
 
-from .sklearn_shim import TransformerMixin
-
-from .generic_subtitles import GenericSubtitle, GenericSubtitlesFile, SubsMixin
+from ffsubsync.generic_subtitles import GenericSubtitle, GenericSubtitlesFile, SubsMixin
+from ffsubsync.sklearn_shim import TransformerMixin
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class SubtitleShifter(SubsMixin, TransformerMixin):

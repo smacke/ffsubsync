@@ -1,12 +1,16 @@
 # -*- coding: future_annotations -*- 
 import logging
 import math
-from typing import List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ffsubsync.golden_section_search import gss
 from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
+
+if TYPE_CHECKING:
+    from typing import List, Optional, Tuple, Type, Union
+
 
 logging.basicConfig(level=logging.INFO)
 logger: logging.Logger = logging.getLogger(__name__)

@@ -3,15 +3,19 @@ import copy
 from datetime import timedelta
 import logging
 import os
-from typing import cast, Any, Dict, Iterator, List, Optional
+from typing import cast, TYPE_CHECKING
 
 import pysubs2
 import srt
 import six
 import sys
 
+if TYPE_CHECKING:
+    from typing import Any, Dict, Iterator, List, Optional
+
+
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class SubsMixin:
