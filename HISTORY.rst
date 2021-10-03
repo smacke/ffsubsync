@@ -210,3 +210,7 @@ History
 0.4.16 (2021-07-22)
 -------------------
 * Fix a couple of validation bugs that prevented certain uncommon command line options from use;
+
+0.4.17 (2021-10-02)
+-------------------
+* Add --suppress-output-if-offset-less-than arg to suppress output for small syncs
