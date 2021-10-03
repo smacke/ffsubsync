@@ -168,7 +168,15 @@ def try_sync(args: argparse.Namespace, reference_pipe: Pipeline, result: Dict[st
             if args.output_encoding != 'same':
                 out_subs = out_subs.set_encoding(args.output_encoding)
             logger.info('writing output to {}'.format(srtout or 'stdout'))
-            out_subs.write_file(srtout)
+            suppress_output_thresh = args.suppress_output_if_offset_less_than
+            if (
+                suppress_output_thresh is None
+                or (
+                    scale_step.scale_factor == 1.0
+                    and offset_seconds >= suppress_output_thresh
+                )
+            ):
+                out_subs.write_file(srtout)
     except FailedToFindAlignmentException as e:
         sync_was_successful = False
         logger.error(e)
@@ -437,6 +445,9 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
                         default=None,
                         help='If specified, do not attempt sync; instead, just extract subtitles'
                              ' from the specified stream using the reference.')
+    parser.add_argument('--suppress-output-if-offset-less-than', type=float,
+                        default=None,
+                        help='If specified, do not produce output if offset below provided threshold.')
     parser.add_argument(
         '--ffmpeg-path', '--ffmpegpath', default=None,
         help='Where to look for ffmpeg and ffprobe. Uses the system PATH by default.'
