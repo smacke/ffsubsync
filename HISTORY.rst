@@ -213,4 +213,8 @@ History
 
 0.4.17 (2021-10-02)
 -------------------
-* Add --suppress-output-if-offset-less-than arg to suppress output for small syncs
+* Add --suppress-output-if-offset-less-than arg to suppress output for small syncs;
+
+0.4.17 (2021-10-03)
+-------------------
+* Don't remove log file if --log-dir-path explicitly requested;

@@ -64,7 +64,7 @@ def make_test_case(args: argparse.Namespace, npy_savename: Optional[str], sync_w
     os.mkdir(tar_dir)
     try:
         log_path = 'ffsubsync.log'
-        if args.log_dir_path and os.path.isdir(args.log_dir_path):
+        if args.log_dir_path is not None and os.path.isdir(args.log_dir_path):
             log_path = os.path.join(args.log_dir_path, log_path)
         shutil.copy(log_path, tar_dir)
         shutil.copy(args.srtin[0], tar_dir)
@@ -167,7 +167,6 @@ def try_sync(args: argparse.Namespace, reference_pipe: Pipeline, result: Dict[st
             out_subs = output_pipe.fit_transform(scale_step.subs_)
             if args.output_encoding != 'same':
                 out_subs = out_subs.set_encoding(args.output_encoding)
-            logger.info('writing output to {}'.format(srtout or 'stdout'))
             suppress_output_thresh = args.suppress_output_if_offset_less_than
             if (
                 suppress_output_thresh is None
@@ -176,7 +175,11 @@ def try_sync(args: argparse.Namespace, reference_pipe: Pipeline, result: Dict[st
                     and offset_seconds >= suppress_output_thresh
                 )
             ):
+                logger.info('writing output to {}'.format(srtout or 'stdout'))
                 out_subs.write_file(srtout)
+            else:
+                logger.warning('suppressing output because offset %s was less than suppression threshold %s',
+                               offset_seconds, args.suppress_output_if_offset_less_than)
     except FailedToFindAlignmentException as e:
         sync_was_successful = False
         logger.error(e)
@@ -311,7 +314,21 @@ def validate_file_permissions(args: argparse.Namespace) -> None:
             raise ValueError('unable to write test case file archive %s (try checking permissions)' % npy_savename)
 
 
+def _setup_logging(args: argparse.Namespace) -> Tuple[Optional[str], Optional[logging.FileHandler]]:
+    log_handler = None
+    log_path = None
+    if args.make_test_case or args.log_dir_path is not None:
+        log_path = 'ffsubsync.log'
+        if args.log_dir_path is not None and os.path.isdir(args.log_dir_path):
+            log_path = os.path.join(args.log_dir_path, log_path)
+        log_handler = logging.FileHandler(log_path)
+        logger.addHandler(log_handler)
+        logger.info('this log will be written to %s', os.path.abspath(log_path))
+    return log_path, log_handler
+
+
 def run(args: argparse.Namespace) -> Dict[str, Any]:
+    log_path, log_handler = _setup_logging(args)
     result = {
         'retval': 0,
         'offset_seconds': None,
@@ -338,14 +355,6 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
                      'when reference composed of subtitles')
         result['retval'] = 1
         return result
-    log_handler = None
-    log_path = None
-    if args.make_test_case:
-        log_path = 'ffsubsync.log'
-        if args.log_dir_path and os.path.isdir(args.log_dir_path):
-            log_path = os.path.join(args.log_dir_path, log_path)
-        log_handler = logging.FileHandler(log_path)
-        logger.addHandler(log_handler)
     if args.extract_subs_from_stream is not None:
         result['retval'] = extract_subtitles_from_reference(args)
         return result
@@ -364,13 +373,14 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
             return result
     sync_was_successful = try_sync(args, reference_pipe, result)
     if log_handler is not None and log_path is not None:
-        assert args.make_test_case
-        log_handler.close()
-        logger.removeHandler(log_handler)
         try:
-            result['retval'] += make_test_case(args, npy_savename, sync_was_successful)
+            log_handler.close()
+            logger.removeHandler(log_handler)
+            if args.make_test_case:
+                result['retval'] += make_test_case(args, npy_savename, sync_was_successful)
         finally:
-            os.remove(log_path)
+            if args.log_dir_path is None or not os.path.isdir(args.log_dir_path):
+                os.remove(log_path)
     return result
 
 
@@ -453,7 +463,7 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         help='Where to look for ffmpeg and ffprobe. Uses the system PATH by default.'
     )
     parser.add_argument('--log-dir-path', default=None,
-                        help='Where to save ffsubsync.log file (must be an existing directory).')
+                        help='If provided, will save log file ffsubsync.log to this path (must be an existing directory).')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--skip-sync', action='store_true', help=argparse.SUPPRESS)
