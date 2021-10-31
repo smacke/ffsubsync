@@ -49,7 +49,9 @@ def override(args: argparse.Namespace, **kwargs: Any) -> Dict[str, Any]:
     return args_dict
 
 
-def _ref_format(ref_fname: str) -> str:
+def _ref_format(ref_fname: Optional[str]) -> Optional[str]:
+    if ref_fname is None:
+        return None
     return ref_fname[-3:]
 
 
@@ -117,7 +119,7 @@ def get_framerate_ratios_to_try(args: argparse.Namespace) -> List[Optional[float
         return framerate_ratios
 
 
-def try_sync(args: argparse.Namespace, reference_pipe: Pipeline, result: Dict[str, Any]) -> bool:
+def try_sync(args: argparse.Namespace, reference_pipe: Optional[Pipeline], result: Dict[str, Any]) -> bool:
     sync_was_successful = True
     exc = None
     try:
@@ -126,6 +128,8 @@ def try_sync(args: argparse.Namespace, reference_pipe: Pipeline, result: Dict[st
         if not args.srtin:
             args.srtin = [None]
         for srtin in args.srtin:
+            skip_sync = args.skip_sync or reference_pipe is None
+            skip_infer_framerate_ratio = args.skip_infer_framerate_ratio or reference_pipe is None
             srtout = srtin if args.overwrite_input else args.srtout
             srt_pipe_maker = get_srt_pipe_maker(args, srtin)
             framerate_ratios = get_framerate_ratios_to_try(args)
@@ -135,13 +139,13 @@ def try_sync(args: argparse.Namespace, reference_pipe: Pipeline, result: Dict[st
                     continue
                 else:
                     srt_pipe.fit(srtin)
-            if not args.skip_infer_framerate_ratio and hasattr(reference_pipe[-1], 'num_frames'):
+            if not skip_infer_framerate_ratio and hasattr(reference_pipe[-1], 'num_frames'):
                 inferred_framerate_ratio_from_length = float(reference_pipe[-1].num_frames) / cast(Pipeline, srt_pipes[0])[-1].num_frames
                 logger.info('inferred frameratio ratio: %.3f' % inferred_framerate_ratio_from_length)
                 srt_pipes.append(cast(Pipeline, srt_pipe_maker(inferred_framerate_ratio_from_length)).fit(srtin))
                 logger.info('...done')
             logger.info('computing alignments...')
-            if args.skip_sync:
+            if skip_sync:
                 best_score = 0.
                 best_srt_pipe = cast(Pipeline, srt_pipes[0])
                 offset_samples = 0
@@ -270,6 +274,14 @@ def extract_subtitles_from_reference(args: argparse.Namespace) -> int:
 def validate_args(args: argparse.Namespace) -> None:
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
+    if args.reference is None:
+        if args.apply_offset_seconds == 0 or not args.srtin:
+            raise ValueError('`reference` required unless `--apply-offset-seconds` specified')
+    if args.apply_offset_seconds != 0:
+        if not args.srtin:
+            args.srtin = [args.reference]
+        if not args.srtin:
+            raise ValueError('at least one of `srtin` or `reference` must be specified to apply offset seconds')
     if args.srtin:
         if len(args.srtin) > 1 and not args.overwrite_input:
                 raise ValueError('cannot specify multiple input srt files without overwriting')
@@ -278,7 +290,7 @@ def validate_args(args: argparse.Namespace) -> None:
         if len(args.srtin) > 1 and args.gui_mode:
                 raise ValueError('cannot specify multiple input srt files in GUI mode')
     if args.make_test_case and not args.gui_mode:  # this validation not necessary for gui mode
-        if args.srtin is None or args.srtout is None:
+        if not args.srtin or args.srtout is None:
             raise ValueError('need to specify input and output srt files for test cases')
     if args.overwrite_input:
         if args.extract_subs_from_stream is not None:
@@ -300,7 +312,7 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def validate_file_permissions(args: argparse.Namespace) -> None:
     error_string_template = 'unable to {action} {file}; try ensuring file exists and has correct permissions'
-    if not os.access(args.reference, os.R_OK):
+    if args.reference is not None and not os.access(args.reference, os.R_OK):
         raise ValueError(error_string_template.format(action='read reference', file=args.reference))
     if args.srtin:
         for srtin in args.srtin:
@@ -327,66 +339,94 @@ def _setup_logging(args: argparse.Namespace) -> Tuple[Optional[str], Optional[lo
     return log_path, log_handler
 
 
-def run(args: argparse.Namespace) -> Dict[str, Any]:
-    log_path, log_handler = _setup_logging(args)
-    result = {
-        'retval': 0,
-        'offset_seconds': None,
-        'framerate_scale_factor': None,
-        'sync_was_successful': None
-    }
+def _npy_savename(args: argparse.Namespace) -> str:
+    return os.path.splitext(args.reference)[0] + '.npz'
+
+
+def _run_impl(args: argparse.Namespace, result: Dict[str, Any]) -> bool:
+    if args.extract_subs_from_stream is not None:
+        result['retval'] = extract_subtitles_from_reference(args)
+        return True
+    if args.srtin is not None and (args.reference is None or (len(args.srtin) == 1 and args.srtin[0] == args.reference)):
+        return try_sync(args, None, result)
+    reference_pipe = make_reference_pipe(args)
+    logger.info("extracting speech segments from reference '%s'...", args.reference)
+    reference_pipe.fit(args.reference)
+    logger.info('...done')
+    if args.make_test_case or args.serialize_speech:
+        logger.info('serializing speech...')
+        np.savez_compressed(_npy_savename(args), speech=reference_pipe.transform(args.reference))
+        logger.info('...done')
+        if not args.srtin:
+            logger.info('unsynchronized subtitle file not specified; skipping synchronization')
+            return False
+    return try_sync(args, reference_pipe, result)
+
+
+def validate_and_transform_args(
+    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace]
+) -> Optional[argparse.Namespace]:
+    if isinstance(parser_or_args, argparse.Namespace):
+        parser = None
+        args = parser_or_args
+    else:
+        parser = parser_or_args
+        args = parser.parse_args()
     try:
         validate_args(args)
     except ValueError as e:
         logger.error(e)
-        result['retval'] = 1
-        return result
+        if parser is not None:
+            parser.print_usage()
+        return None
     if args.gui_mode and args.srtout is None:
         args.srtout = '{}.synced.srt'.format(os.path.splitext(args.srtin[0])[0])
     try:
         validate_file_permissions(args)
     except ValueError as e:
         logger.error(e)
-        result['retval'] = 1
-        return result
+        return None
     ref_format = _ref_format(args.reference)
     if args.merge_with_reference and ref_format not in SUBTITLE_EXTENSIONS:
         logger.error('merging synced output with reference only valid '
                      'when reference composed of subtitles')
+        return None
+    return args
+
+
+def run(parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace]) -> Dict[str, Any]:
+    sync_was_successful = False
+    result = {
+        'retval': 0,
+        'offset_seconds': None,
+        'framerate_scale_factor': None,
+    }
+    args = validate_and_transform_args(parser_or_args)
+    if args is None:
         result['retval'] = 1
         return result
-    if args.extract_subs_from_stream is not None:
-        result['retval'] = extract_subtitles_from_reference(args)
-        return result
-    reference_pipe = make_reference_pipe(args)
-    logger.info("extracting speech segments from reference '%s'...", args.reference)
-    reference_pipe.fit(args.reference)
-    logger.info('...done')
-    npy_savename = None
-    if args.make_test_case or args.serialize_speech:
-        logger.info('serializing speech...')
-        npy_savename = os.path.splitext(args.reference)[0] + '.npz'
-        np.savez_compressed(npy_savename, speech=reference_pipe.transform(args.reference))
-        logger.info('...done')
-        if args.srtin[0] is None:
-            logger.info('unsynchronized subtitle file not specified; skipping synchronization')
+    log_path, log_handler = _setup_logging(args)
+    try:
+        sync_was_successful = _run_impl(args, result)
+        result['sync_was_successful'] = sync_was_successful
+    finally:
+        if log_handler is None or log_path is None:
             return result
-    sync_was_successful = try_sync(args, reference_pipe, result)
-    if log_handler is not None and log_path is not None:
         try:
             log_handler.close()
             logger.removeHandler(log_handler)
             if args.make_test_case:
-                result['retval'] += make_test_case(args, npy_savename, sync_was_successful)
+                result['retval'] += make_test_case(args, _npy_savename(args), sync_was_successful)
         finally:
             if args.log_dir_path is None or not os.path.isdir(args.log_dir_path):
                 os.remove(log_path)
-    return result
+        return result
 
 
 def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         'reference',
+        nargs='?',
         help='Reference (video, subtitles, or a numpy array with VAD speech) to which to synchronize input subtitles.'
     )
     parser.add_argument('-i', '--srtin', nargs='*', help='Input subtitles file (default=stdin).')
@@ -479,8 +519,7 @@ def make_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     parser = make_parser()
-    args = parser.parse_args()
-    return run(args)['retval']
+    return run(parser)['retval']
 
 
 if __name__ == "__main__":
