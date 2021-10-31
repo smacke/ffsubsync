@@ -27,12 +27,13 @@ class FFTAligner(TransformerMixin):
         self.best_score_: Optional[float] = None
         self.get_score_: bool = False
 
-    def _zero_out_extreme_offsets(self, convolve: np.ndarray, substring: np.ndarray) -> np.ndarray:
+    def _eliminate_extreme_offsets_from_solutions(self, convolve: np.ndarray, substring: np.ndarray) -> np.ndarray:
         convolve = np.copy(convolve)
         if self.max_offset_samples is None:
             return convolve
         offset_to_index = lambda offset: len(convolve) - 1 + offset - len(substring)
-        convolve[:offset_to_index(-self.max_offset_samples)] = convolve[offset_to_index(self.max_offset_samples):] = 0
+        convolve[:offset_to_index(-self.max_offset_samples)] = float('-inf')
+        convolve[offset_to_index(self.max_offset_samples):] = float('-inf')
         return convolve
 
     def _compute_argmax(self, convolve: np.ndarray, substring: np.ndarray) -> None:
@@ -54,9 +55,7 @@ class FFTAligner(TransformerMixin):
         subft = np.fft.fft(np.append(np.zeros(extra_zeros + len(refstring)), substring))
         refft = np.fft.fft(np.flip(np.append(refstring, np.zeros(len(substring) + extra_zeros)), 0))
         convolve = np.real(np.fft.ifft(subft * refft))
-        self._compute_argmax(self._zero_out_extreme_offsets(convolve, substring), substring)
-        if self.best_score_ == 0.:
-            self._compute_argmax(convolve, substring)
+        self._compute_argmax(self._eliminate_extreme_offsets_from_solutions(convolve, substring), substring)
         self.get_score_ = get_score
         return self
 
