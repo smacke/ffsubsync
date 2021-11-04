@@ -504,10 +504,11 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument('--log-dir-path', default=None,
                         help='If provided, will save log file ffsubsync.log to this path (must be an existing directory).')
+    parser.add_argument('--gss', action='store_true', help='If specified, use golden-section search to try to find'
+                                                           'the optimal framerate ratio between video and subtitles.')
     parser.add_argument('--vlc-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--gui-mode', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--skip-sync', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('--gss', action='store_true', help=argparse.SUPPRESS)
 
 
 def make_parser() -> argparse.ArgumentParser:

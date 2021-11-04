@@ -63,20 +63,20 @@ detection on the audio or to directly extract speech from an srt file.
 
 Sync Issues
 -----------
-If the sync fails, there are a few recourses available.  The best one to try
-first is to specify `--vad=auditok` as a command line option, since sometimes
-[auditok](https://github.com/amsehili/auditok) works well with ffsubsync in the
-case of of muffled or otherwise low-quality audio.  Auditok does not
-specifically detect voice, but instead detects all audio; this property can
-yield suboptimal syncing behavior when a proper VAD can work
-well, but can be effective in some cases.
-
-The next step is to try different values for `--max-offset-seconds`. By default
-ffsubsync runs with `--max-offset-seconds=60`, since subititles are unlikely
-to be offset by more than 1 minute in practice, and enforcing this constraint
-typically leads to a better outcome. There may be some rare cases in which
-subtitles are more egregiously out of sync and where increasing this value can
-help.
+If the sync fails, the following recourses are available:
+- Try to sync assuming identical video / subtitle framerates by passing
+  `--no-fix-framerate`;
+- Try passing `--gss` to use [golden-section search](https://en.wikipedia.org/wiki/Golden-section_search)
+  to find the optimal ratio between video and subtitle framerates (by default,
+  only a few common ratios are evaluated);
+- Try a value of `--max-offset-seconds` greater than the default of 60, in the
+  event that the subtitles are out of sync by more than 60 seconds (empirically
+  unlikely in practice, but possible).
+- Try `--vad=auditok` since [auditok](https://github.com/amsehili/auditok) can
+  sometimes work better in the case of low-quality audio than WebRTC's VAD.
+  Auditok does not specifically detect voice, but instead detects all audio;
+  this property can yield suboptimal syncing behavior when a proper VAD can
+  work well, but can be effective in some cases.
 
 If the sync still fails, consider trying one of the following similar tools:
 - [sc0ty/subsync](https://github.com/sc0ty/subsync): does speech-to-text and looks for matching word morphemes
@@ -87,15 +87,15 @@ If the sync still fails, consider trying one of the following similar tools:
 
 Speed
 -----
-`ffsubsync` usually finishes in 20 to 30 seconds, depending on the length of the
-video. The most expensive step is actually extraction of raw audio. If you
+`ffsubsync` usually finishes in 20 to 30 seconds, depending on the length of
+the video. The most expensive step is actually extraction of raw audio. If you
 already have a correctly synchronized "reference" srt file (in which case audio
 extraction can be skipped), `ffsubsync` typically runs in less than a second.
 
 How It Works
 ------------
 The synchronization algorithm operates in 3 steps:
-1. Discretize video(*) and subtitles by time into 10ms windows.
+1. Discretize both the audio stream and subtitles by time into 10ms windows.
 2. For each 10ms window, determine whether that window contains speech.  This
    is trivial to do for subtitles (we just determine whether any subtitle is
    "on" during each time window); for video(*), use an off-the-shelf voice
@@ -113,8 +113,6 @@ naive O(n^2) strategy for scoring all alignments is unacceptable. Instead, we
 use the fact that "scoring all alignments" is a convolution operation and can
 be implemented with the Fast Fourier Transform (FFT), bringing the complexity
 down to O(n log n).
-
-`(*) When say video, it is actually the audio part in video/audio muxed`
 
 Limitations
 -----------
