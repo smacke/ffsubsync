@@ -218,3 +218,9 @@ History
 0.4.17 (2021-10-03)
 -------------------
 * Don't remove log file if --log-dir-path explicitly requested;
+
+0.4.18 (2021-11-07)
+-------------------
+* Allow `--apply-offset-seconds` when only subtitles specified;
+* Make golden section search over scale factors option (`--gss`) available from help;
+* Use -inf as objective for invalid offsets;
