@@ -95,11 +95,12 @@ extraction can be skipped), `ffsubsync` typically runs in less than a second.
 How It Works
 ------------
 The synchronization algorithm operates in 3 steps:
-1. Discretize both the audio stream and subtitles by time into 10ms windows.
+1. Discretize both the video file's audio stream and the subtitles into 10ms
+   windows.
 2. For each 10ms window, determine whether that window contains speech.  This
    is trivial to do for subtitles (we just determine whether any subtitle is
-   "on" during each time window); for video(*), use an off-the-shelf voice
-   activity detector (VAD) like
+   "on" during each time window); for the audio stream, use an off-the-shelf
+   voice activity detector (VAD) like
    the one built into [webrtc](https://webrtc.org/).
 3. Now we have two binary strings: one for the subtitles, and one for the
    video.  Try to align these strings by matching 0's with 0's and 1's with
