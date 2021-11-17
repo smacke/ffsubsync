@@ -16,6 +16,10 @@ logging.basicConfig(level=logging.INFO)
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+MIN_FRAMERATE_RATIO = 0.9
+MAX_FRAMERATE_RATIO = 1.1
+
+
 class FailedToFindAlignmentException(Exception):
     pass
 
@@ -95,7 +99,7 @@ class MaxScoreAligner(TransformerMixin):
             if is_last_iter:
                 self._scores.append((score, subpipe))
             return -score[0]
-        gss(opt_func, 0.9, 1.1)
+        gss(opt_func, MIN_FRAMERATE_RATIO, MAX_FRAMERATE_RATIO)
         return self
 
     def fit(self, refstring, subpipes: Union[Pipeline, List[Pipeline]]) -> MaxScoreAligner:
