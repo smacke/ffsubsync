@@ -224,3 +224,7 @@ History
 * Allow `--apply-offset-seconds` when only subtitles specified;
 * Make golden section search over scale factors option (`--gss`) available from help;
 * Use -inf as objective for invalid offsets;
+
+0.4.19 (2022-01-07)
+-------------------
+* Blacken code and get rid of future_annotations dependency;
