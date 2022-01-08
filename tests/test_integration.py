@@ -1,4 +1,4 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 
 import filecmp
 import os
@@ -7,6 +7,7 @@ import tempfile
 
 import numpy as np
 import pytest
+
 try:
     import yaml
 except ImportError:  # pyyaml does not work with py3.4
@@ -17,36 +18,37 @@ from ffsubsync.sklearn_shim import make_pipeline
 from ffsubsync.speech_transformers import SubtitleSpeechTransformer
 from ffsubsync.subtitle_parser import GenericSubtitleParser
 
-INTEGRATION = 'INTEGRATION'
-SYNC_TESTS = 'sync_tests'
-REF = 'reference'
-SYNCED = 'synchronized'
-UNSYNCED = 'unsynchronized'
-SKIP = 'skip'
-FILECMP = 'filecmp'
-SHOULD_DETECT_ENCODING = 'should_detect_encoding'
-EXTRA_ARGS = 'extra_args'
-EXTRA_NO_VALUE_ARGS = 'extra_no_value_args'
+INTEGRATION = "INTEGRATION"
+SYNC_TESTS = "sync_tests"
+REF = "reference"
+SYNCED = "synchronized"
+UNSYNCED = "unsynchronized"
+SKIP = "skip"
+FILECMP = "filecmp"
+SHOULD_DETECT_ENCODING = "should_detect_encoding"
+EXTRA_ARGS = "extra_args"
+EXTRA_NO_VALUE_ARGS = "extra_no_value_args"
 
 
 def gen_synctest_configs():
     def test_path(fname):
-        return os.path.join('test-data', fname)
+        return os.path.join("test-data", fname)
+
     if INTEGRATION not in os.environ or os.environ[INTEGRATION] == 0:
         return
-    with open('test-data/integration-testing-config.yaml', 'r') as f:
+    with open("test-data/integration-testing-config.yaml", "r") as f:
         config = yaml.load(f, yaml.SafeLoader)
     parser = ffsubsync.make_parser()
     for test in config[SYNC_TESTS]:
         if SKIP in test and test[SKIP]:
             continue
-        unparsed_args = [test_path(test[REF]), '-i', test_path(test[UNSYNCED])]
+        unparsed_args = [test_path(test[REF]), "-i", test_path(test[UNSYNCED])]
         if EXTRA_ARGS in test:
             for extra_key, extra_value in test[EXTRA_ARGS].items():
-                unparsed_args.extend(['--{}'.format(extra_key), str(extra_value)])
+                unparsed_args.extend(["--{}".format(extra_key), str(extra_value)])
         if EXTRA_NO_VALUE_ARGS in test:
             for extra_key in test[EXTRA_NO_VALUE_ARGS]:
-                unparsed_args.append('--{}'.format(extra_key))
+                unparsed_args.append("--{}".format(extra_key))
         args = parser.parse_args(unparsed_args)
         truth = test_path(test[SYNCED])
         should_filecmp = True
@@ -74,14 +76,18 @@ def detected_encoding(fname):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize('args,truth,should_filecmp,should_detect_encoding', gen_synctest_configs())
+@pytest.mark.parametrize(
+    "args,truth,should_filecmp,should_detect_encoding", gen_synctest_configs()
+)
 def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_encoding):
     # context manager TemporaryDirectory not available on py2
     dirpath = tempfile.mkdtemp()
     try:
-        args.srtout = os.path.join(dirpath, 'test' + os.path.splitext(args.srtin[0])[-1])
+        args.srtout = os.path.join(
+            dirpath, "test" + os.path.splitext(args.srtin[0])[-1]
+        )
         args.skip_ssa_info = True
-        assert ffsubsync.run(args)['retval'] == 0
+        assert ffsubsync.run(args)["retval"] == 0
         if should_filecmp:
             assert filecmp.cmp(args.srtout, truth, shallow=False)
         else:

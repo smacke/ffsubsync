@@ -36,7 +36,10 @@ def gss(f, a, b, tol=1e-4):
 
     # Required steps to achieve tolerance
     n = int(math.ceil(math.log(tol / h) / math.log(invphi)))
-    logger.info('About to perform %d iterations of golden section search to find the best framerate', n)
+    logger.info(
+        "About to perform %d iterations of golden section search to find the best framerate",
+        n,
+    )
 
     def f_wrapped(x, is_last_iter):
         try:
@@ -46,24 +49,24 @@ def gss(f, a, b, tol=1e-4):
 
     c = a + invphi2 * h
     d = a + invphi * h
-    yc = f_wrapped(c, n==1)
-    yd = f_wrapped(d, n==1)
+    yc = f_wrapped(c, n == 1)
+    yd = f_wrapped(d, n == 1)
 
-    for k in range(n-1):
+    for k in range(n - 1):
         if yc < yd:
             b = d
             d = c
             yd = yc
             h = invphi * h
             c = a + invphi2 * h
-            yc = f_wrapped(c, k==n-2)
+            yc = f_wrapped(c, k == n - 2)
         else:
             a = c
             c = d
             yc = yd
             h = invphi * h
             d = a + invphi * h
-            yd = f(d, k==n-2)
+            yd = f(d, k == n - 2)
 
     if yc < yd:
         return a, d

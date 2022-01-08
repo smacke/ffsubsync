@@ -1,7 +1,7 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 from datetime import timedelta
 import logging
-from typing import TYPE_CHECKING
+from typing import Any, Optional
 
 try:
     import cchardet as chardet
@@ -15,36 +15,15 @@ from ffsubsync.constants import *
 from ffsubsync.file_utils import open_file
 from ffsubsync.generic_subtitles import GenericSubtitle, GenericSubtitlesFile, SubsMixin
 
-if TYPE_CHECKING:
-    from typing import Any, Optional
-
 logging.basicConfig(level=logging.INFO)
 logger: logging.Logger = logging.getLogger(__name__)
-
-
-def make_subtitle_parser(
-    fmt: str,
-    encoding: str = DEFAULT_ENCODING,
-    caching: bool = False,
-    max_subtitle_seconds: int = DEFAULT_MAX_SUBTITLE_SECONDS,
-    start_seconds: int = DEFAULT_START_SECONDS,
-    **kwargs: Any
-) -> GenericSubtitleParser:
-    return GenericSubtitleParser(
-        fmt=fmt,
-        encoding=encoding,
-        caching=caching,
-        max_subtitle_seconds=max_subtitle_seconds,
-        start_seconds=start_seconds,
-        skip_ssa_info=kwargs.get('skip_ssa_info', False),
-    )
 
 
 def _preprocess_subs(
     subs,
     max_subtitle_seconds: Optional[int] = None,
     start_seconds: int = 0,
-    tolerant: bool = True
+    tolerant: bool = True,
 ) -> List[GenericSubtitle]:
     subs_list = []
     start_time = timedelta(seconds=start_seconds)
@@ -76,8 +55,8 @@ def _preprocess_subs(
 class GenericSubtitleParser(SubsMixin, TransformerMixin):
     def __init__(
         self,
-        fmt: str = 'srt',
-        encoding: str = 'infer',
+        fmt: str = "srt",
+        encoding: str = "infer",
         caching: bool = False,
         max_subtitle_seconds: Optional[int] = None,
         start_seconds: int = 0,
@@ -94,46 +73,52 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
         # FIXME: hack to get tests to pass; remove
         self._skip_ssa_info: bool = skip_ssa_info
 
-    def fit(self, fname: str, *_) -> GenericSubtitleParser:
-        if self.caching and self.fit_fname == ('<stdin>' if fname is None else fname):
+    def fit(self, fname: str, *_) -> "GenericSubtitleParser":
+        if self.caching and self.fit_fname == ("<stdin>" if fname is None else fname):
             return self
         encodings_to_try = (self.encoding,)
-        with open_file(fname, 'rb') as f:
+        with open_file(fname, "rb") as f:
             subs = f.read()
-        if self.encoding == 'infer':
-            encodings_to_try = (chardet.detect(subs)['encoding'],)
+        if self.encoding == "infer":
+            encodings_to_try = (chardet.detect(subs)["encoding"],)
             self.detected_encoding_ = encodings_to_try[0]
-            logger.info('detected encoding: %s' % self.detected_encoding_)
+            logger.info("detected encoding: %s" % self.detected_encoding_)
         exc = None
         for encoding in encodings_to_try:
             try:
-                decoded_subs = subs.decode(encoding, errors='replace').strip()
-                if self.sub_format == 'srt':
+                decoded_subs = subs.decode(encoding, errors="replace").strip()
+                if self.sub_format == "srt":
                     parsed_subs = srt.parse(decoded_subs)
-                elif self.sub_format in ('ass', 'ssa', 'sub'):
+                elif self.sub_format in ("ass", "ssa", "sub"):
                     parsed_subs = pysubs2.SSAFile.from_string(decoded_subs)
                 else:
-                    raise NotImplementedError('unsupported format: %s' % self.sub_format)
+                    raise NotImplementedError(
+                        "unsupported format: %s" % self.sub_format
+                    )
                 extra_generic_subtitle_file_kwargs = {}
                 if isinstance(parsed_subs, pysubs2.SSAFile):
-                    extra_generic_subtitle_file_kwargs.update(dict(
-                        styles=parsed_subs.styles,
-                        # pysubs2 on Python >= 3.6 doesn't support this
-                        fonts_opaque=getattr(parsed_subs, 'fonts_opaque', None),
-                        info=parsed_subs.info if not self._skip_ssa_info else None,
-                    ))
+                    extra_generic_subtitle_file_kwargs.update(
+                        dict(
+                            styles=parsed_subs.styles,
+                            # pysubs2 on Python >= 3.6 doesn't support this
+                            fonts_opaque=getattr(parsed_subs, "fonts_opaque", None),
+                            info=parsed_subs.info if not self._skip_ssa_info else None,
+                        )
+                    )
                 self.subs_ = GenericSubtitlesFile(
-                    _preprocess_subs(parsed_subs,
-                                     max_subtitle_seconds=self.max_subtitle_seconds,
-                                     start_seconds=self.start_seconds),
+                    _preprocess_subs(
+                        parsed_subs,
+                        max_subtitle_seconds=self.max_subtitle_seconds,
+                        start_seconds=self.start_seconds,
+                    ),
                     sub_format=self.sub_format,
                     encoding=encoding,
                     **extra_generic_subtitle_file_kwargs,
                 )
-                self.fit_fname = '<stdin>' if fname is None else fname
+                self.fit_fname = "<stdin>" if fname is None else fname
                 if len(encodings_to_try) > 1:
                     self.detected_encoding_ = encoding
-                    logger.info('detected encoding: %s' % self.detected_encoding_)
+                    logger.info("detected encoding: %s" % self.detected_encoding_)
                 return self
             except Exception as e:
                 exc = e
@@ -142,3 +127,21 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
 
     def transform(self, *_) -> GenericSubtitlesFile:
         return self.subs_
+
+
+def make_subtitle_parser(
+    fmt: str,
+    encoding: str = DEFAULT_ENCODING,
+    caching: bool = False,
+    max_subtitle_seconds: int = DEFAULT_MAX_SUBTITLE_SECONDS,
+    start_seconds: int = DEFAULT_START_SECONDS,
+    **kwargs: Any,
+) -> GenericSubtitleParser:
+    return GenericSubtitleParser(
+        fmt=fmt,
+        encoding=encoding,
+        caching=caching,
+        max_subtitle_seconds=max_subtitle_seconds,
+        start_seconds=start_seconds,
+        skip_ssa_info=kwargs.get("skip_ssa_info", False),
+    )

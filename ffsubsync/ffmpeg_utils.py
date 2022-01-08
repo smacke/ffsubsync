@@ -1,4 +1,4 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import logging
 import os
 import platform
@@ -23,7 +23,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 #                           **subprocess_args(False))
 def subprocess_args(include_stdout=True):
     # The following is true only on Windows.
-    if hasattr(subprocess, 'STARTUPINFO'):
+    if hasattr(subprocess, "STARTUPINFO"):
         # On Windows, subprocess calls will pop up a command window by default
         # when run from Pyinstaller with the ``--noconsole`` option. Avoid this
         # distraction.
@@ -47,7 +47,7 @@ def subprocess_args(include_stdout=True):
     #
     # So, add it only if it's needed.
     if include_stdout:
-        ret = {'stdout': subprocess.PIPE}
+        ret = {"stdout": subprocess.PIPE}
     else:
         ret = {}
 
@@ -55,23 +55,29 @@ def subprocess_args(include_stdout=True):
     # with the ``--noconsole`` option requires redirecting everything
     # (stdin, stdout, stderr) to avoid an OSError exception
     # "[Error 6] the handle is invalid."
-    ret.update({'stdin': subprocess.PIPE,
-                'stderr': subprocess.PIPE,
-                'startupinfo': si,
-                'env': env})
+    ret.update(
+        {
+            "stdin": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "startupinfo": si,
+            "env": env,
+        }
+    )
     return ret
 
 
 def ffmpeg_bin_path(bin_name, gui_mode, ffmpeg_resources_path=None):
-    if platform.system() == 'Windows':
-        bin_name = '{}.exe'.format(bin_name)
+    if platform.system() == "Windows":
+        bin_name = "{}.exe".format(bin_name)
     if ffmpeg_resources_path is not None:
         return os.path.join(ffmpeg_resources_path, bin_name)
     try:
         resource_path = os.environ[SUBSYNC_RESOURCES_ENV_MAGIC]
         if len(resource_path) > 0:
-            return os.path.join(resource_path, 'ffmpeg-bin', bin_name)
+            return os.path.join(resource_path, "ffmpeg-bin", bin_name)
     except KeyError:
         if gui_mode:
-            logger.info("Couldn't find resource path; falling back to searching system path")
+            logger.info(
+                "Couldn't find resource path; falling back to searching system path"
+            )
     return bin_name

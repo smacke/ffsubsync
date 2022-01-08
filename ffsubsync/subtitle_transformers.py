@@ -1,4 +1,4 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 from datetime import timedelta
 import logging
 import numbers
@@ -40,7 +40,7 @@ class SubtitleScaler(SubsMixin, TransformerMixin):
                     # py2 doesn't support direct multiplication of timedelta w/ float
                     timedelta(seconds=sub.start.total_seconds() * self.scale_factor),
                     timedelta(seconds=sub.end.total_seconds() * self.scale_factor),
-                    sub.inner
+                    sub.inner,
                 )
             )
         self.subs_ = subs.clone_props_for_subs(scaled_subs)
@@ -51,8 +51,8 @@ class SubtitleScaler(SubsMixin, TransformerMixin):
 
 
 class SubtitleMerger(SubsMixin, TransformerMixin):
-    def __init__(self, reference_subs, first='reference'):
-        assert first in ('reference', 'output')
+    def __init__(self, reference_subs, first="reference"):
+        assert first in ("reference", "output")
         super(SubsMixin, self).__init__()
         self.reference_subs = reference_subs
         self.first = first
@@ -112,7 +112,7 @@ class SubtitleMerger(SubsMixin, TransformerMixin):
                     cur_b = next(itb, None)
 
         merged_subs = []
-        if self.first == 'reference':
+        if self.first == "reference":
             first, second = self.reference_subs, output_subs
         else:
             first, second = output_subs, self.reference_subs

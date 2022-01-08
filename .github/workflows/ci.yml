@@ -1,19 +1,14 @@
 name: ffsubsync
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
 
     runs-on: ${{ matrix.os }}
-    
+
     strategy:
       matrix:
-        exclude:
-          - os: windows-latest
-            python-version: 2.7.x
-          - os: windows-latest
-            python-version: 3.5.x
         os: [ 'macos-latest', 'ubuntu-latest', 'windows-latest' ]
         python-version: [ '3.6.x', '3.7.x', '3.8.x', '3.9.x' ]
 

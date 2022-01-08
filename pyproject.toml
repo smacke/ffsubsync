@@ -1,0 +1,4 @@
+[tool.black]
+line-length = 88
+target-version = ['py39']
+extend-exclude = '(^/versioneer|_version)\.py'

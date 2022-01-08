@@ -1,4 +1,4 @@
-# -*- coding: future_annotations -*- 
+# -*- coding: utf-8 -*-
 import logging
 import sys
 
@@ -12,7 +12,7 @@ try:
         level=logging.INFO,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(console=Console(file=sys.stderr))]
+        handlers=[RichHandler(console=Console(file=sys.stderr))],
     )
 except ImportError:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
