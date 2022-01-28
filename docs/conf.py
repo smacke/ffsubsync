@@ -13,8 +13,6 @@
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
-import future_annotations
-future_annotations.register()
 
 
 # -- Project information -----------------------------------------------------

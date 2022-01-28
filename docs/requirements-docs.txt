@@ -1,6 +1,5 @@
 # docs
 autodoc
 docutils<0.18  # ref: https://github.com/sphinx-doc/sphinx/issues/9788
-future-annotations
 sphinx-argparse
 sphinx-rtd-theme
