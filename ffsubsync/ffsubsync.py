@@ -216,11 +216,11 @@ def try_sync(
                 )
     except FailedToFindAlignmentException as e:
         sync_was_successful = False
-        logger.error(e)
+        logger.exception(e)
     except Exception as e:
         exc = e
         sync_was_successful = False
-        logger.error(e)
+        logger.exception(e)
     else:
         result["offset_seconds"] = offset_seconds
         result["framerate_scale_factor"] = scale_step.scale_factor
