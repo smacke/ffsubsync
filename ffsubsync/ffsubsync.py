@@ -214,13 +214,12 @@ def try_sync(
                     offset_seconds,
                     args.suppress_output_if_offset_less_than,
                 )
-    except FailedToFindAlignmentException as e:
+    except FailedToFindAlignmentException:
         sync_was_successful = False
-        logger.exception(e)
+        logger.exception("failed to find alignment")
     except Exception as e:
         exc = e
         sync_was_successful = False
-        logger.exception(e)
     else:
         result["offset_seconds"] = offset_seconds
         result["framerate_scale_factor"] = scale_step.scale_factor
@@ -687,6 +686,11 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="If specified, use golden-section search to try to find"
         "the optimal framerate ratio between video and subtitles.",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="If specified, refuse to parse srt files with formatting issues.",
     )
     parser.add_argument("--vlc-mode", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--gui-mode", action="store_true", help=argparse.SUPPRESS)

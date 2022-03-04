@@ -61,6 +61,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
         max_subtitle_seconds: Optional[int] = None,
         start_seconds: int = 0,
         skip_ssa_info: bool = False,
+        strict: bool = False,
     ) -> None:
         super(self.__class__, self).__init__()
         self.sub_format: str = fmt
@@ -72,6 +73,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
         self.start_seconds: int = start_seconds
         # FIXME: hack to get tests to pass; remove
         self._skip_ssa_info: bool = skip_ssa_info
+        self._strict: bool = strict
 
     def fit(self, fname: str, *_) -> "GenericSubtitleParser":
         if self.caching and self.fit_fname == ("<stdin>" if fname is None else fname):
@@ -88,7 +90,9 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
             try:
                 decoded_subs = subs.decode(encoding, errors="replace").strip()
                 if self.sub_format == "srt":
-                    parsed_subs = srt.parse(decoded_subs, ignore_errors=True)
+                    parsed_subs = srt.parse(
+                        decoded_subs, ignore_errors=not self._strict
+                    )
                 elif self.sub_format in ("ass", "ssa", "sub"):
                     parsed_subs = pysubs2.SSAFile.from_string(decoded_subs)
                 else:
@@ -144,4 +148,5 @@ def make_subtitle_parser(
         max_subtitle_seconds=max_subtitle_seconds,
         start_seconds=start_seconds,
         skip_ssa_info=kwargs.get("skip_ssa_info", False),
+        strict=kwargs.get("strict", False),
     )
