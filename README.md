@@ -21,7 +21,7 @@ Donations
 ---------
 Rather than donating money to this project, please consider donating to one of
 the charities working to improve the lives of those affected by the war in
-Ukraine. Please refer to [this excellent list](https://github.com/krassowski/krassowski/blob/main/README.md).
+Ukraine. Please refer to [this excellent list](https://github.com/krassowski/krassowski/blob/main/README.md)
 if you are not sure where to donate.
 
 <!--
