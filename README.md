@@ -17,21 +17,12 @@ Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
 ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-wrong.gif)  |  ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-correct.gif)
 
-Donations
----------
-Rather than donating money to this project, please consider donating to one of
-the charities working to improve the lives of those affected by the war in
-Ukraine. Please refer to [this excellent list](https://github.com/krassowski/krassowski/blob/main/README.md)
-if you are not sure where to donate.
-
-<!--
 Helping Development
 -------------------
 At the request of some, you can now help cover my coffee expenses using the
 Github Sponsors button at the top, or using the below Paypal Donate button:
 
 [![Donate](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=XJC5ANLMYECJE)
--->
 
 Install
 -------
