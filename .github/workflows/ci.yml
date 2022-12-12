@@ -10,21 +10,15 @@ jobs:
     strategy:
       matrix:
         os: [ 'macos-latest', 'ubuntu-latest', 'windows-latest' ]
-        python-version: [ '3.6.x', '3.7.x', '3.8.x', '3.9.x' ]
-        exclude:
-          - os: 'macos-latest'
-            python-version: '3.6.x'
-          - os: 'windows-latest'
-            python-version: '3.6.x'
-
+        python-version: [ '3.7.x', '3.8.x', '3.9.x' ]
     steps:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 1
-#    - uses: jwsi/submodule-checkout@v1
-#      if: matrix.os == 'ubuntu-latest'
-#      with:
-#        ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
+    - uses: smacke/submodule-checkout@v2
+      if: matrix.os == 'ubuntu-latest'
+      with:
+        ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
@@ -46,10 +40,10 @@ jobs:
     - name: Run unit tests with pytest
       run: |
         pytest --cov-config=.coveragerc --cov-report= --cov=ffsubsync -v -m 'not integration' tests/
-#    - name: Run integration tests with pytest
-#      if: matrix.os == 'ubuntu-latest'
-#      run: |
-#        INTEGRATION=1 pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'integration' tests/
+    - name: Run integration tests with pytest
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        INTEGRATION=1 pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'integration' tests/
     - name: Upload coverage report
       if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v1
