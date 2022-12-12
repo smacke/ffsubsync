@@ -21,10 +21,7 @@ jobs:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 1
-    - name: Allow submodule checkout
-      run: |
-        git config --global --add safe.directory '*'
-    - uses: jwsi/submodule-checkout@v1
+    - uses: jwsi/submodule-checkout@v2
       if: matrix.os == 'ubuntu-latest'
       with:
         ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
