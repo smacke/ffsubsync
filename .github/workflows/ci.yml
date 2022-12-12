@@ -37,9 +37,14 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         #flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         flake8 . --exit-zero  
-    - name: Run unit tests with pytest
+    - name: Run unit tests with pytest (no coverage)
+      if: matrix.os != 'ubuntu-latest'
       run: |
         pytest --cov-config=.coveragerc --cov-report= --cov=ffsubsync -v -m 'not integration' tests/
+    - name: Run unit tests with pytest (with coverage)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'not integration' tests/
 #    - name: Run integration tests with pytest
 #      if: 'ubuntu-latest'
 #      run: |
