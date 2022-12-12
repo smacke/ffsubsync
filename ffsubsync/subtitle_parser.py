@@ -4,7 +4,7 @@ import logging
 from typing import Any, Optional
 
 try:
-    import cchardet as chardet
+    import chardet_normalizer as chardet
 except ImportError:
     import chardet  # type: ignore
 import pysubs2

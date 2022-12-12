@@ -1,5 +1,5 @@
 auditok==0.1.5
-cchardet
+charset_normalizer
 ffmpeg-python
 numpy>=1.12.0
 pysubs2;python_version<'3.7'
