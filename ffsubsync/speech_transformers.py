@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from contextlib import contextmanager
 import logging
 import io
@@ -144,11 +145,54 @@ def _make_webrtcvad_detector(
                     asegment[start * bytes_per_frame : stop * bytes_per_frame],
                     sample_rate=frame_rate,
                 )
-            except:
+            except Exception:
                 is_speech = False
                 failures += 1
             # webrtcvad has low recall on mode 3, so treat non-speech as "not sure"
             media_bstring.append(1.0 if is_speech else non_speech_label)
+        return np.array(media_bstring)
+
+    return _detect
+
+
+def _make_silero_detector(
+    sample_rate: int, frame_rate: int, non_speech_label: float
+) -> Callable[[bytes], np.ndarray]:
+    import torch
+
+    window_duration = 1.0 / sample_rate  # duration in seconds
+    frames_per_window = int(window_duration * frame_rate + 0.5)
+    bytes_per_frame = 1
+
+    model, _ = torch.hub.load(
+        repo_or_dir="snakers4/silero-vad",
+        model="silero_vad",
+        force_reload=False,
+        onnx=False,
+    )
+
+    exception_logged = False
+
+    def _detect(asegment) -> np.ndarray:
+        asegment = np.frombuffer(asegment, np.int16).astype(np.float32) / (1 << 15)
+        asegment = torch.FloatTensor(asegment)
+        media_bstring = []
+        failures = 0
+        for start in range(0, len(asegment) // bytes_per_frame, frames_per_window):
+            stop = min(start + frames_per_window, len(asegment))
+            try:
+                speech_prob = model(
+                    asegment[start * bytes_per_frame : stop * bytes_per_frame],
+                    frame_rate,
+                ).item()
+            except Exception:
+                nonlocal exception_logged
+                if not exception_logged:
+                    exception_logged = True
+                    logger.exception("exception occurred during speech detection")
+                speech_prob = 0.0
+                failures += 1
+            media_bstring.append(1.0 - (1.0 - speech_prob) * (1.0 - non_speech_label))
         return np.array(media_bstring)
 
     return _detect
@@ -170,8 +214,8 @@ class ComputeSpeechFrameBoundariesMixin:
     ) -> "ComputeSpeechFrameBoundariesMixin":
         nz = np.nonzero(speech_frames > 0.5)[0]
         if len(nz) > 0:
-            self.start_frame_ = np.min(nz)
-            self.end_frame_ = np.max(nz)
+            self.start_frame_ = int(np.min(nz))
+            self.end_frame_ = int(np.max(nz))
         return self
 
 
@@ -287,6 +331,10 @@ class VideoSpeechTransformer(TransformerMixin):
             detector = _make_auditok_detector(
                 self.sample_rate, self.frame_rate, self._non_speech_label
             )
+        elif "silero" in self.vad:
+            detector = _make_silero_detector(
+                self.sample_rate, self.frame_rate, self._non_speech_label
+            )
         else:
             raise ValueError("unknown vad: %s" % self.vad)
         media_bstring = []
@@ -363,13 +411,16 @@ class VideoSpeechTransformer(TransformerMixin):
                         assert self.gui_mode
                         # no need to flush since we pass -u to do unbuffered output for gui mode
                         print(pbar_output.read())
-                    in_bytes = np.frombuffer(in_bytes, np.uint8)
+                    if "silero" not in self.vad:
+                        in_bytes = np.frombuffer(in_bytes, np.uint8)
                     media_bstring.append(detector(in_bytes))
+        os.waitpid(process.pid, 0)
         if len(media_bstring) == 0:
             raise ValueError(
                 "Unable to detect speech. Perhaps try specifying a different stream / track, or a different vad."
             )
         self.video_speech_results_ = np.concatenate(media_bstring)
+        logger.info("total of speech segments: %s", np.sum(self.video_speech_results_))
         return self
 
     def transform(self, *_) -> np.ndarray:

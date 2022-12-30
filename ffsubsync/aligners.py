@@ -40,7 +40,7 @@ class FFTAligner(TransformerMixin):
         return convolve
 
     def _compute_argmax(self, convolve: np.ndarray, substring: np.ndarray) -> None:
-        best_idx = np.argmax(convolve)
+        best_idx = int(np.argmax(convolve))
         self.best_offset_ = len(convolve) - 1 - best_idx - len(substring)
         self.best_score_ = convolve[best_idx]
 

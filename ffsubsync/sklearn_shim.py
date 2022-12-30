@@ -14,7 +14,7 @@ from typing_extensions import Protocol
 
 class TransformerProtocol(Protocol):
     fit: Callable[..., "TransformerProtocol"]
-    transform: Callable[["TransformerProtocol", Any], Any]
+    transform: Callable[[Any], Any]
 
 
 # Author: Gael Varoquaux <gael.varoquaux@normalesup.org>

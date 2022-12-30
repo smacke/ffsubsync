@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta
 import logging
-from typing import Any, Optional
+from typing import Any, cast, Optional
 
 try:
     import charset_normalizer as chardet
@@ -82,7 +82,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
         with open_file(fname, "rb") as f:
             subs = f.read()
         if self.encoding == "infer":
-            encodings_to_try = (chardet.detect(subs)["encoding"],)
+            encodings_to_try = (cast(str, chardet.detect(subs)["encoding"]),)
             self.detected_encoding_ = encodings_to_try[0]
             logger.info("detected encoding: %s" % self.detected_encoding_)
         exc = None

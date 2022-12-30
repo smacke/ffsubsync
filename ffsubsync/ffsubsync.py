@@ -505,20 +505,17 @@ def run(
     try:
         sync_was_successful = _run_impl(args, result)
         result["sync_was_successful"] = sync_was_successful
+        return result
     finally:
-        if log_handler is None or log_path is None:
-            return result
-        try:
+        if log_handler is not None and log_path is not None:
             log_handler.close()
             logger.removeHandler(log_handler)
             if args.make_test_case:
                 result["retval"] += make_test_case(
                     args, _npy_savename(args), sync_was_successful
                 )
-        finally:
             if args.log_dir_path is None or not os.path.isdir(args.log_dir_path):
                 os.remove(log_path)
-        return result
 
 
 def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
@@ -641,7 +638,14 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--vad",
-        choices=["subs_then_webrtc", "webrtc", "subs_then_auditok", "auditok"],
+        choices=[
+            "subs_then_webrtc",
+            "webrtc",
+            "subs_then_auditok",
+            "auditok",
+            "subs_then_silero",
+            "silero",
+        ],
         default=None,
         help="Which voice activity detector to use for speech extraction "
         "(if using video / audio as a reference, default={}).".format(DEFAULT_VAD),
