@@ -1,5 +1,6 @@
 auditok==0.1.5
-cchardet;python_version<'3.11' or platform_system!='Windows'
+cchardet;platform_system!='Windows'
+cchardet;python_version<'3.11'
 chardet;python_version>='3.7'
 charset_normalizer
 ffmpeg-python
