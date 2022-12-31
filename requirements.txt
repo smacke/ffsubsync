@@ -4,6 +4,7 @@ cchardet;python_version<'3.11'
 chardet;python_version>='3.7'
 charset_normalizer
 ffmpeg-python
+future>=0.18.2
 numpy>=1.12.0
 pysubs2;python_version<'3.7'
 pysubs2>=1.2.0;python_version>='3.7'
