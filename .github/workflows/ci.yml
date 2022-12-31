@@ -15,10 +15,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 1
-#    - uses: smacke/submodule-checkout@v2
-#      if: matrix.os == 'ubuntu-latest'
-#      with:
-#        ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
+    - uses: smacke/submodule-checkout@v2
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version != '3.10.x'}}
+      with:
+        ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
@@ -45,10 +45,10 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'not integration' tests/
-#    - name: Run integration tests with pytest
-#      if: 'ubuntu-latest'
-#      run: |
-#        INTEGRATION=1 pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'integration' tests/
+    - name: Run integration tests with pytest
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version != '3.10.x'}}
+      run: |
+        INTEGRATION=1 pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'integration' tests/
     - name: Upload coverage report
       if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v1
