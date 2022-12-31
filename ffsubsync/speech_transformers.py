@@ -6,13 +6,19 @@ import io
 import subprocess
 import sys
 from datetime import timedelta
-from typing import cast, Callable, Dict, Optional, Union
+from typing import cast, Callable, Dict, List, Optional, Union
 
 import ffmpeg
 import numpy as np
 import tqdm
 
-from ffsubsync.constants import *
+from ffsubsync.constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_MAX_SUBTITLE_SECONDS,
+    DEFAULT_SCALE_FACTOR,
+    DEFAULT_START_SECONDS,
+    SAMPLE_RATE,
+)
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path, subprocess_args
 from ffsubsync.generic_subtitles import GenericSubtitle
 from ffsubsync.sklearn_shim import TransformerMixin
@@ -337,7 +343,7 @@ class VideoSpeechTransformer(TransformerMixin):
             )
         else:
             raise ValueError("unknown vad: %s" % self.vad)
-        media_bstring = []
+        media_bstring: List[np.ndarray] = []
         ffmpeg_args = [
             ffmpeg_bin_path(
                 "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
@@ -372,10 +378,7 @@ class VideoSpeechTransformer(TransformerMixin):
         windows_per_buffer = 10000
         simple_progress = 0.0
 
-        @contextmanager
-        def redirect_stderr(enter_result=None):
-            yield enter_result
-
+        redirect_stderr = None
         tqdm_extra_args = {}
         should_print_redirected_stderr = self.gui_mode
         if self.gui_mode:
@@ -385,6 +388,13 @@ class VideoSpeechTransformer(TransformerMixin):
                 tqdm_extra_args["file"] = sys.stdout
             except ImportError:
                 should_print_redirected_stderr = False
+        if redirect_stderr is None:
+
+            @contextmanager
+            def redirect_stderr(enter_result=None):
+                yield enter_result
+
+        assert redirect_stderr is not None
         pbar_output = io.StringIO()
         with redirect_stderr(pbar_output):
             with tqdm.tqdm(

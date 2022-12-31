@@ -34,9 +34,12 @@ class FFTAligner(TransformerMixin):
         convolve = np.copy(convolve)
         if self.max_offset_samples is None:
             return convolve
-        offset_to_index = lambda offset: len(convolve) - 1 + offset - len(substring)
-        convolve[: offset_to_index(-self.max_offset_samples)] = float("-inf")
-        convolve[offset_to_index(self.max_offset_samples) :] = float("-inf")
+
+        def _offset_to_index(offset):
+            return len(convolve) - 1 + offset - len(substring)
+
+        convolve[: _offset_to_index(-self.max_offset_samples)] = float("-inf")
+        convolve[_offset_to_index(self.max_offset_samples) :] = float("-inf")
         return convolve
 
     def _compute_argmax(self, convolve: np.ndarray, substring: np.ndarray) -> None:

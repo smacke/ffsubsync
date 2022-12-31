@@ -1,25 +1,29 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta
 import logging
-from typing import Any, cast, Optional
+from typing import Any, cast, List, Optional
 
 try:
     import cchardet
-except:
+except:  # noqa: E722
     cchardet = None
 try:
     import chardet
-except:
+except:  # noqa: E722
     chardet = None
 try:
     import charset_normalizer
-except:
+except:  # noqa: E722
     charset_normalizer = None
 import pysubs2
 from ffsubsync.sklearn_shim import TransformerMixin
 import srt
 
-from ffsubsync.constants import *
+from ffsubsync.constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_MAX_SUBTITLE_SECONDS,
+    DEFAULT_START_SECONDS,
+)
 from ffsubsync.file_utils import open_file
 from ffsubsync.generic_subtitles import GenericSubtitle, GenericSubtitlesFile, SubsMixin
 
@@ -96,7 +100,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                         detected_encoding = cast(
                             Optional[str], chardet_lib.detect(subs)["encoding"]
                         )
-                    except:
+                    except:  # noqa: E722
                         continue
                     if detected_encoding is not None:
                         self.detected_encoding_ = detected_encoding
