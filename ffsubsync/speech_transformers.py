@@ -427,7 +427,8 @@ class VideoSpeechTransformer(TransformerMixin):
         os.waitpid(process.pid, 0)
         if len(media_bstring) == 0:
             raise ValueError(
-                "Unable to detect speech. Perhaps try specifying a different stream / track, or a different vad."
+                "Unable to detect speech. "
+                "Perhaps try specifying a different stream / track, or a different vad."
             )
         self.video_speech_results_ = np.concatenate(media_bstring)
         logger.info("total of speech segments: %s", np.sum(self.video_speech_results_))

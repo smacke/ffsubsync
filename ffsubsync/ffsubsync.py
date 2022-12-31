@@ -361,23 +361,29 @@ def validate_args(args: argparse.Namespace) -> None:
             )
         if not args.srtin:
             raise ValueError(
-                "need to specify input srt if --overwrite-input is specified since we cannot overwrite stdin"
+                "need to specify input srt if --overwrite-input "
+                "is specified since we cannot overwrite stdin"
             )
         if args.srtout is not None:
             raise ValueError(
-                "overwrite input set but output file specified; refusing to run in case this was not intended"
+                "overwrite input set but output file specified; "
+                "refusing to run in case this was not intended"
             )
     if args.extract_subs_from_stream is not None:
         if args.make_test_case:
             raise ValueError("test case is for sync and not subtitle extraction")
         if args.srtin:
             raise ValueError(
-                "stream specified for reference subtitle extraction; -i flag for sync input not allowed"
+                "stream specified for reference subtitle extraction; "
+                "-i flag for sync input not allowed"
             )
 
 
 def validate_file_permissions(args: argparse.Namespace) -> None:
-    error_string_template = "unable to {action} {file}; try ensuring file exists and has correct permissions"
+    error_string_template = (
+        "unable to {action} {file}; "
+        "try ensuring file exists and has correct permissions"
+    )
     if args.reference is not None and not os.access(args.reference, os.R_OK):
         raise ValueError(
             error_string_template.format(action="read reference", file=args.reference)
@@ -522,7 +528,10 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "reference",
         nargs="?",
-        help="Reference (video, subtitles, or a numpy array with VAD speech) to which to synchronize input subtitles.",
+        help=(
+            "Reference (video, subtitles, or a numpy array with VAD speech) "
+            "to which to synchronize input subtitles."
+        ),
     )
     parser.add_argument(
         "-i", "--srtin", nargs="*", help="Input subtitles file (default=stdin)."
@@ -550,11 +559,13 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
         "--reference-track",
         "--reftrack",
         default=None,
-        help="Which stream/track in the video file to use as reference, "
-        "formatted according to ffmpeg conventions. For example, 0:s:0 "
-        "uses the first subtitle track; 0:a:3 would use the third audio track. "
-        "You can also drop the leading `0:`; i.e. use s:0 or a:3, respectively. "
-        "Example: `ffs ref.mkv -i in.srt -o out.srt --reference-stream s:2`",
+        help=(
+            "Which stream/track in the video file to use as reference, "
+            "formatted according to ffmpeg conventions. For example, 0:s:0 "
+            "uses the first subtitle track; 0:a:3 would use the third audio track. "
+            "You can also drop the leading `0:`; i.e. use s:0 or a:3, respectively. "
+            "Example: `ffs ref.mkv -i in.srt -o out.srt --reference-stream s:2`"
+        ),
     )
 
 
@@ -570,7 +581,10 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--overwrite-input",
         action="store_true",
-        help="If specified, will overwrite the input srt instead of writing the output to a new file.",
+        help=(
+            "If specified, will overwrite the input srt "
+            "instead of writing the output to a new file."
+        ),
     )
     parser.add_argument(
         "--encoding",
@@ -683,7 +697,10 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--log-dir-path",
         default=None,
-        help="If provided, will save log file ffsubsync.log to this path (must be an existing directory).",
+        help=(
+            "If provided, will save log file ffsubsync.log to this path "
+            "(must be an existing directory)."
+        ),
     )
     parser.add_argument(
         "--gss",

@@ -64,7 +64,11 @@ _menu = [
 def make_parser():
     description = DESCRIPTION
     if update_available():
-        description += '\nUpdate available! Please go to "File" -> "Download latest release" to update FFsubsync.'
+        description += (
+            "\nUpdate available! Please go to "
+            '"File" -> "Download latest release"'
+            " to update FFsubsync."
+        )
     parser = GooeyParser(description=description)
     main_group = parser.add_argument_group("Basic")
     main_group.add_argument(
