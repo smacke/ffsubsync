@@ -228,3 +228,7 @@ History
 0.4.19 (2022-01-07)
 -------------------
 * Blacken code and get rid of future_annotations dependency;
+
+0.4.21 (2022-12-30)
+-------------------
+* Misc maintenance / compatibility fixes;
