@@ -1,15 +1,15 @@
 auditok==0.1.5
-cchardet; python_version < '3.11' or platform_system != 'Windows'
-chardet; python_version >= '3.7'
+cchardet;python_version < '3.11' or platform_system != 'Windows'
+chardet;python_version >= '3.7'
 charset_normalizer
 ffmpeg-python
 numpy>=1.12.0
-pysubs2; python_version < '3.7'
-pysubs2>=1.2.0; python_version >= '3.7'
+pysubs2;python_version < '3.7'
+pysubs2>=1.2.0;python_version >= '3.7'
 rich
 six
 srt>=3.0.0
 tqdm
 typing_extensions
-webrtcvad; platform_system != 'Windows'
-webrtcvad-wheels; platform_system == 'Windows'
+webrtcvad;platform_system != 'Windows'
+webrtcvad-wheels;platform_system == 'Windows'
