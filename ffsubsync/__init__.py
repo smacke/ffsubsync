@@ -14,7 +14,7 @@ try:
         datefmt="[%X]",
         handlers=[RichHandler(console=Console(file=sys.stderr))],
     )
-except ImportError:
+except:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
 from .version import __version__  # noqa
