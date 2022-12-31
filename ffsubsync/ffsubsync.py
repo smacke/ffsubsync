@@ -214,9 +214,9 @@ def try_sync(
                     offset_seconds,
                     args.suppress_output_if_offset_less_than,
                 )
-    except FailedToFindAlignmentException:
+    except FailedToFindAlignmentException as e:
         sync_was_successful = False
-        logger.exception("failed to find alignment")
+        logger.error(str(e))
     except Exception as e:
         exc = e
         sync_was_successful = False
