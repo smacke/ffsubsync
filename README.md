@@ -36,7 +36,7 @@ brew install ffmpeg
 (Windows users: make sure `ffmpeg` is on your path and can be referenced
 from the command line!)
 
-Next, grab the script. It should work with both Python 2 and Python 3:
+Next, grab the package (compatible with Python >= 3.6):
 ~~~
 pip install ffsubsync
 ~~~

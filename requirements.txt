@@ -1,5 +1,4 @@
 auditok==0.1.5
-cchardet;platform_system!='Windows'
 cchardet;python_version<'3.11'
 chardet;python_version>='3.7'
 charset_normalizer
