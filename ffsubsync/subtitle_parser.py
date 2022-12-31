@@ -4,9 +4,17 @@ import logging
 from typing import Any, cast, Optional
 
 try:
-    import charset_normalizer as chardet
-except ImportError:
-    import chardet  # type: ignore
+    import cchardet
+except:
+    cchardet = None
+try:
+    import chardet
+except:
+    chardet = None
+try:
+    import charset_normalizer
+except:
+    charset_normalizer = None
 import pysubs2
 from ffsubsync.sklearn_shim import TransformerMixin
 import srt
@@ -82,8 +90,19 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
         with open_file(fname, "rb") as f:
             subs = f.read()
         if self.encoding == "infer":
-            encodings_to_try = (cast(str, chardet.detect(subs)["encoding"]),)
-            self.detected_encoding_ = encodings_to_try[0]
+            for chardet_lib in (cchardet, charset_normalizer, chardet):
+                if chardet_lib is not None:
+                    try:
+                        detected_encoding = cast(
+                            Optional[str], chardet_lib.detect(subs)["encoding"]
+                        )
+                    except:
+                        continue
+                    if detected_encoding is not None:
+                        self.detected_encoding_ = detected_encoding
+                        encodings_to_try = (detected_encoding,)
+                        break
+            assert self.detected_encoding_ is not None
             logger.info("detected encoding: %s" % self.detected_encoding_)
         exc = None
         for encoding in encodings_to_try:
