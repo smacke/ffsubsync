@@ -89,6 +89,8 @@ def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_en
         args.skip_ssa_info = True
         assert ffsubsync.run(args)["retval"] == 0
         if should_filecmp:
+            # uncomment this after verifying that test failures are false positives
+            # shutil.copy(args.srtout, truth)
             assert filecmp.cmp(args.srtout, truth, shallow=False)
         else:
             assert timestamps_roughly_match(args.srtout, truth)
