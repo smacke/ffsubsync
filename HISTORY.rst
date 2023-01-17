@@ -1,6 +1,10 @@
 History
 =======
 
+0.4.23 (2023-01-17)
+-------------------
+* Bugfix for waitpid on Windows;
+
 0.4.22 (2022-12-31)
 -------------------
 * Misc maintenance / compatibility fixes;
