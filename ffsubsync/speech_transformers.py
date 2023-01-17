@@ -424,7 +424,7 @@ class VideoSpeechTransformer(TransformerMixin):
                     if "silero" not in self.vad:
                         in_bytes = np.frombuffer(in_bytes, np.uint8)
                     media_bstring.append(detector(in_bytes))
-        os.waitpid(process.pid, 0)
+        process.wait()
         if len(media_bstring) == 0:
             raise ValueError(
                 "Unable to detect speech. "
