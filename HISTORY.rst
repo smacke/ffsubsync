@@ -1,6 +1,10 @@
 History
 =======
 
+0.4.24 (2023-03-26)
+-------------------
+* Replace unmaintained cchardet with faust-cchardet;
+
 0.4.23 (2023-01-17)
 -------------------
 * Bugfix for waitpid on Windows;
