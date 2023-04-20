@@ -202,10 +202,7 @@ def try_sync(
             if args.output_encoding != "same":
                 out_subs = out_subs.set_encoding(args.output_encoding)
             suppress_output_thresh = args.suppress_output_if_offset_less_than
-            if suppress_output_thresh is None or (
-                scale_step.scale_factor == 1.0
-                and offset_seconds >= suppress_output_thresh
-            ):
+            if offset_seconds >= (suppress_output_thresh or 0):
                 logger.info("writing output to {}".format(srtout or "stdout"))
                 out_subs.write_file(srtout)
             else:

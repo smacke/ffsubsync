@@ -206,7 +206,7 @@ class Pipeline:
                 )
             step, param = pname.split("__", 1)
             fit_params_steps[step][param] = pval
-        for (step_idx, name, transformer) in self._iter(
+        for step_idx, name, transformer in self._iter(
             with_final=False, filter_passthrough=False
         ):
             if transformer is None or transformer == "passthrough":
