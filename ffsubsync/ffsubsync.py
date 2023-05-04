@@ -128,16 +128,16 @@ def get_framerate_ratios_to_try(args: argparse.Namespace) -> List[Optional[float
 def try_sync(
     args: argparse.Namespace, reference_pipe: Optional[Pipeline], result: Dict[str, Any]
 ) -> bool:
+    result["sync_was_successful"] = False
     sync_was_successful = True
-    exc = None
-    try:
-        logger.info(
-            "extracting speech segments from %s...",
-            "stdin" if not args.srtin else "subtitles file(s) {}".format(args.srtin),
-        )
-        if not args.srtin:
-            args.srtin = [None]
-        for srtin in args.srtin:
+    logger.info(
+        "extracting speech segments from %s...",
+        "stdin" if not args.srtin else "subtitles file(s) {}".format(args.srtin),
+    )
+    if not args.srtin:
+        args.srtin = [None]
+    for srtin in args.srtin:
+        try:
             skip_sync = args.skip_sync or reference_pipe is None
             skip_infer_framerate_ratio = (
                 args.skip_infer_framerate_ratio or reference_pipe is None
@@ -211,20 +211,16 @@ def try_sync(
                     offset_seconds,
                     args.suppress_output_if_offset_less_than,
                 )
-    except FailedToFindAlignmentException as e:
-        sync_was_successful = False
-        logger.error(str(e))
-    except Exception as e:
-        exc = e
-        sync_was_successful = False
-    else:
-        result["offset_seconds"] = offset_seconds
-        result["framerate_scale_factor"] = scale_step.scale_factor
-    finally:
-        if exc is not None:
-            raise exc
-        result["sync_was_successful"] = sync_was_successful
-        return sync_was_successful
+        except FailedToFindAlignmentException as e:
+            sync_was_successful = False
+            logger.error(str(e))
+        except Exception:
+            raise
+        else:
+            result["offset_seconds"] = offset_seconds
+            result["framerate_scale_factor"] = scale_step.scale_factor
+    result["sync_was_successful"] = sync_was_successful
+    return sync_was_successful
 
 
 def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
