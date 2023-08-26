@@ -11,11 +11,7 @@ from typing import cast, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from ffsubsync.aligners import (
-    FFTAligner,
-    MaxScoreAligner,
-    FailedToFindAlignmentException,
-)
+from ffsubsync.aligners import FFTAligner, MaxScoreAligner
 from ffsubsync.constants import (
     DEFAULT_APPLY_OFFSET_SECONDS,
     DEFAULT_FRAME_RATE,
@@ -211,11 +207,9 @@ def try_sync(
                     offset_seconds,
                     args.suppress_output_if_offset_less_than,
                 )
-        except FailedToFindAlignmentException as e:
-            sync_was_successful = False
-            logger.error(str(e))
         except Exception:
-            raise
+            sync_was_successful = False
+            logger.exception("failed to sync %s", srtin)
         else:
             result["offset_seconds"] = offset_seconds
             result["framerate_scale_factor"] = scale_step.scale_factor
