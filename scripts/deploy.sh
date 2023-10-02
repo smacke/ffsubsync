@@ -30,10 +30,10 @@ set timeout -1
 spawn twine upload dist/*
 
 expect "Enter your username:"
-send -- "$(lpass show pypi.org --field=username)\r"
+send -- "$(lpass show 937494930560669633 --username)\r"
 
 expect "Enter your password:"
-send -- "$(lpass show pypi.org --field=password)\r"
+send -- "$(lpass show 937494930560669633 --password)\r"
 expect
 EOF
 
