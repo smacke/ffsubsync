@@ -178,6 +178,8 @@ def try_sync(
                     reference_pipe.transform(args.reference),
                     srt_pipes,
                 )
+            if best_score < 0:
+                sync_was_successful = False
             logger.info("...done")
             offset_seconds = (
                 offset_samples / float(SAMPLE_RATE) + args.apply_offset_seconds
