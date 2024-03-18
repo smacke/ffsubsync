@@ -70,6 +70,10 @@ def ffmpeg_bin_path(bin_name, gui_mode, ffmpeg_resources_path=None):
     if platform.system() == "Windows":
         bin_name = "{}.exe".format(bin_name)
     if ffmpeg_resources_path is not None:
+        if not os.path.isdir(ffmpeg_resources_path):
+            if bin_name.lower().startswith("ffmpeg"):
+                return ffmpeg_resources_path
+            ffmpeg_resources_path = os.path.dirname(ffmpeg_resources_path)
         return os.path.join(ffmpeg_resources_path, bin_name)
     try:
         resource_path = os.environ[SUBSYNC_RESOURCES_ENV_MAGIC]
