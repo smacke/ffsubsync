@@ -367,6 +367,8 @@ class VideoSpeechTransformer(TransformerMixin):
                 "1",
                 "-acodec",
                 "pcm_s16le",
+                "-af",
+                "aresample=async=1",
                 "-ar",
                 str(self.frame_rate),
                 "-",
