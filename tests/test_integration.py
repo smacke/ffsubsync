@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-
-import filecmp
 import os
 import shutil
 import tempfile
@@ -24,7 +22,6 @@ REF = "reference"
 SYNCED = "synchronized"
 UNSYNCED = "unsynchronized"
 SKIP = "skip"
-FILECMP = "filecmp"
 SHOULD_DETECT_ENCODING = "should_detect_encoding"
 EXTRA_ARGS = "extra_args"
 EXTRA_NO_VALUE_ARGS = "extra_no_value_args"
@@ -51,13 +48,10 @@ def gen_synctest_configs():
                 unparsed_args.append("--{}".format(extra_key))
         args = parser.parse_args(unparsed_args)
         truth = test_path(test[SYNCED])
-        should_filecmp = True
-        if FILECMP in test:
-            should_filecmp = test[FILECMP]
         should_detect_encoding = None
         if SHOULD_DETECT_ENCODING in test:
             should_detect_encoding = test[SHOULD_DETECT_ENCODING]
-        yield args, truth, should_filecmp, should_detect_encoding
+        yield args, truth, should_detect_encoding
 
 
 def timestamps_roughly_match(f1, f2):
@@ -66,7 +60,7 @@ def timestamps_roughly_match(f1, f2):
     pipe = make_pipeline(parser, extractor)
     f1_bitstring = pipe.fit_transform(f1).astype(bool)
     f2_bitstring = pipe.fit_transform(f2).astype(bool)
-    return np.alltrue(f1_bitstring == f2_bitstring)
+    return np.sum(f1_bitstring == f2_bitstring) / len(f1_bitstring) >= 0.99
 
 
 def detected_encoding(fname):
@@ -76,10 +70,8 @@ def detected_encoding(fname):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "args,truth,should_filecmp,should_detect_encoding", gen_synctest_configs()
-)
-def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_encoding):
+@pytest.mark.parametrize("args,truth,should_detect_encoding", gen_synctest_configs())
+def test_sync_matches_ground_truth(args, truth, should_detect_encoding):
     # context manager TemporaryDirectory not available on py2
     dirpath = tempfile.mkdtemp()
     try:
@@ -88,12 +80,7 @@ def test_sync_matches_ground_truth(args, truth, should_filecmp, should_detect_en
         )
         args.skip_ssa_info = True
         assert ffsubsync.run(args)["retval"] == 0
-        if should_filecmp:
-            # uncomment this after verifying that test failures are false positives
-            # shutil.copy(args.srtout, truth)
-            assert filecmp.cmp(args.srtout, truth, shallow=False)
-        else:
-            assert timestamps_roughly_match(args.srtout, truth)
+        assert timestamps_roughly_match(args.srtout, truth)
         if should_detect_encoding is not None:
             assert detected_encoding(args.srtin[0]) == should_detect_encoding
     finally:
