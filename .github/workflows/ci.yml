@@ -9,18 +9,31 @@ jobs:
 
     strategy:
       matrix:
-        os: [ 'macos-latest', 'ubuntu-latest', 'windows-latest' ]
-        python-version: [ '3.7.x', '3.8.x', '3.9.x', '3.10.x' ]
+        os: [ 'ubuntu-latest', 'windows-latest' ]
+        python-version: [ '3.7', '3.8', '3.9', '3.10', '3.11', '3.12' ]
+        include:
+          - python-version: '3.7'
+            os: 'macos-13'
+          - python-version: '3.8'
+            os: 'macos-13'
+          - python-version: '3.9'
+            os: 'macos-13'
+          - python-version: '3.10'
+            os: 'macos-latest'
+          - python-version: '3.11'
+            os: 'macos-latest'
+          - python-version: '3.12'
+            os: 'macos-latest'
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 1
-    - uses: smacke/submodule-checkout@v3
-      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version != '3.10.x'}}
+    - uses: smacke/submodule-checkout@v4
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version != '3.10'}}
       with:
         ssh-key: '${{ secrets.TEST_DATA_SECRET }}'
     - name: Set up Python
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
@@ -46,7 +59,7 @@ jobs:
       run: |
         pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'not integration' tests/
     - name: Run integration tests with pytest
-      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version != '3.10.x'}}
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version != '3.10'}}
       run: |
         INTEGRATION=1 pytest --cov-config=.coveragerc --cov-report=xml:cov.xml --cov=ffsubsync -v -m 'integration' tests/
     - name: Upload coverage report
