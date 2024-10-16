@@ -1,6 +1,14 @@
 History
 =======
 
+0.4.25 (2024-10-15)
+-------------------
+* Allow progress to work for multiple syncs even if alignment fails for a particular input;
+* Allow specifying ffmpeg exe path using --ffmpeg-path;
+* Updates for Python 3.12;
+* Don't report sync as successful if best score is in negatives (from @ajitid);
+* Turn on Audio Sync for audio extraction process (from @dvh312);
+
 0.4.24 (2023-03-26)
 -------------------
 * Replace unmaintained cchardet with faust-cchardet;
