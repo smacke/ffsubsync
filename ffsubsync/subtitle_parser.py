@@ -116,7 +116,7 @@ class GenericSubtitleParser(SubsMixin, TransformerMixin):
                     parsed_subs = srt.parse(
                         decoded_subs, ignore_errors=not self._strict
                     )
-                elif self.sub_format in ("ass", "ssa", "sub"):
+                elif self.sub_format in ("ass", "ssa", "sub", "vtt"):
                     parsed_subs = pysubs2.SSAFile.from_string(decoded_subs)
                 else:
                     raise NotImplementedError(
