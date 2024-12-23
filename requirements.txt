@@ -8,6 +8,7 @@ numpy>=1.12.0
 pysubs2;python_version<'3.7'
 pysubs2>=1.2.0;python_version>='3.7'
 rich
+setuptools
 six
 srt>=3.0.0
 tqdm
