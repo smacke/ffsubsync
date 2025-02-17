@@ -1,6 +1,10 @@
 History
 =======
 
+0.4.28 (2025-02-16)
+-------------------
+* Add support for Python 3.13;
+
 0.4.27 (2024-12-23)
 -------------------
 * Add support for WebVTT by @GrahamDigital;
