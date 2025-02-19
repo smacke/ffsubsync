@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import six
 import sys
 
 
@@ -13,11 +12,8 @@ class open_file:
         self.closing = kwargs.pop("closing", False)
         if filename is None:
             stream = sys.stdout if "w" in args else sys.stdin
-            if six.PY3:
-                self.fh = open(stream.fileno(), *args, **kwargs)
-            else:
-                self.fh = stream
-        elif isinstance(filename, six.string_types):
+            self.fh = open(stream.fileno(), *args, **kwargs)
+        elif isinstance(filename, str):
             self.fh = open(filename, *args, **kwargs)
             self.closing = True
         else:

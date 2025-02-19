@@ -7,7 +7,6 @@ from typing import cast, Any, Dict, Iterator, List, Optional
 
 import pysubs2
 import srt
-import six
 import sys
 
 
@@ -158,13 +157,8 @@ class GenericSubtitlesFile:
         else:
             raise NotImplementedError("unsupported output format: %s" % out_format)
 
-        to_write = to_write.encode(self._encoding)
-        if six.PY3:
-            with open(fname or sys.stdout.fileno(), "wb") as f:
-                f.write(to_write)
-        else:
-            with (fname and open(fname, "wb")) or sys.stdout as f:
-                f.write(to_write)
+        with open(fname or sys.stdout.fileno(), "wb") as f:
+            f.write(to_write.encode(self._encoding))
 
 
 class SubsMixin:
