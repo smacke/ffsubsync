@@ -253,51 +253,59 @@ class VideoSpeechTransformer(TransformerMixin):
     def try_fit_using_embedded_subs(self, fname: str) -> None:
         embedded_subs = []
         embedded_subs_times = []
-        if self.ref_stream is None:
-            # check first 5; should cover 99% of movies
-            streams_to_try: List[str] = list(map("0:s:{}".format, range(5)))
+        ffmpeg_base_args = [
+            ffmpeg_bin_path("ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path),
+            "-loglevel", "fatal", "-nostdin", "-y", "-i", fname
+        ]
+        video_dir = os.path.dirname(fname)
+        subs_dir = os.path.join(video_dir, "Subs")
+        os.makedirs(subs_dir, exist_ok=True)
+        subtitles_files = []
+        if self.ref_stream:
+            subtitle_filename = os.path.join(subs_dir, f"{os.path.splitext(os.path.basename(fname))[0]}.ref.srt")
+            subtitles_files.append(subtitle_filename)
+            ffmpeg_base_args.extend(["-map", str(self.ref_stream), "-f", "srt", subtitle_filename])
         else:
-            streams_to_try = [self.ref_stream]
-        for stream in streams_to_try:
-            ffmpeg_args = [
-                ffmpeg_bin_path(
-                    "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
-                )
+            ffprobe_args = [
+                ffmpeg_bin_path("ffprobe", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path),
+                "-v", "error", "-select_streams", "s", "-show_entries", "stream=index:stream_tags=language,title", 
+                "-of", "csv=p=0", fname
             ]
-            ffmpeg_args.extend(
-                [
-                    "-loglevel",
-                    "fatal",
-                    "-nostdin",
-                    "-i",
-                    fname,
-                    "-map",
-                    "{}".format(stream),
-                    "-f",
-                    "srt",
-                    "-",
-                ]
-            )
-            process = subprocess.Popen(
-                ffmpeg_args, **subprocess_args(include_stdout=True)
-            )
-            output = io.BytesIO(process.communicate()[0])
-            if process.returncode != 0:
-                break
-            pipe = cast(
-                Pipeline,
-                make_subtitle_speech_pipeline(start_seconds=self.start_seconds),
-            ).fit(output)
-            speech_step = pipe.steps[-1][1]
-            embedded_subs.append(speech_step)
-            embedded_subs_times.append(speech_step.max_time_)
-        if len(embedded_subs) == 0:
-            if self.ref_stream is None:
-                error_msg = "Video file appears to lack subtitle stream"
-            else:
-                error_msg = "Stream {} not found".format(self.ref_stream)
+            logger.info(f"Running ffprobe command: {' '.join(ffprobe_args)}")
+            process = subprocess.Popen(ffprobe_args, **subprocess_args(include_stdout=True))
+            output = process.communicate()[0].decode("utf-8").strip().splitlines()
+            if process.returncode != 0 or not output:
+                raise ValueError("Failed to detect subtitle streams in the video file")
+            for line in output:
+                parts = line.split(",")
+                if len(parts) < 2:
+                    logger.warning(f"Unexpected ffprobe output: {line}")
+                    continue
+                stream_index, language_code = parts[:2]
+                language_title = parts[2] if len(parts) > 2 else None
+                subtitle_filename = os.path.join(
+                    subs_dir, 
+                    f"{os.path.splitext(os.path.basename(fname))[0]}.{language_code}"
+                    + (f".{language_title}" if language_title else "")
+                    + ".srt"
+                )
+                subtitles_files.append(subtitle_filename)
+                ffmpeg_base_args.extend(["-map", f"0:{stream_index}", "-f", "srt", subtitle_filename])
+        logger.info(f"Running ffmpeg command: {' '.join(ffmpeg_base_args)}")
+        process = subprocess.Popen(ffmpeg_base_args, **subprocess_args(include_stdout=True))
+        process.communicate()
+        if process.returncode != 0:
+            raise ValueError("Failed to extract subtitles from the video file")
+        for subtitle_file in subtitles_files:
+            with open(subtitle_file, 'rb') as file:
+                pipe = cast(Pipeline, make_subtitle_speech_pipeline(start_seconds=self.start_seconds))
+                pipe_output = pipe.fit(file)
+                for speech_step in pipe_output.steps[-1:]:
+                    embedded_subs.append(speech_step[1])
+                    embedded_subs_times.append(speech_step[1].max_time_)
+        if not embedded_subs:
+            error_msg = "Video file appears to lack subtitle stream" if self.ref_stream is None else f"Stream {self.ref_stream} not found"
             raise ValueError(error_msg)
-        # use longest set of embedded subs
         subs_to_use = embedded_subs[int(np.argmax(embedded_subs_times))]
         self.video_speech_results_ = subs_to_use.subtitle_speech_results_
 
@@ -367,8 +375,6 @@ class VideoSpeechTransformer(TransformerMixin):
                 "1",
                 "-acodec",
                 "pcm_s16le",
-                "-af",
-                "aresample=async=1",
                 "-ar",
                 str(self.frame_rate),
                 "-",
