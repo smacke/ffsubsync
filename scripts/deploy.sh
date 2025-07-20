@@ -29,10 +29,7 @@ set timeout -1
 
 spawn twine upload dist/*
 
-expect "Enter your username:"
-send -- "$(lpass show 937494930560669633 --username)\r"
-
-expect "Enter your password:"
+expect "Enter your API token:"
 send -- "$(lpass show 937494930560669633 --password)\r"
 expect
 EOF
