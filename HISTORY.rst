@@ -1,6 +1,10 @@
 History
 =======
 
+0.4.30 (2025-09-01)
+-------------------
+* Remove faust-cchardent dependency on Python 3.13;
+
 0.4.29 (2025-02-18)
 -------------------
 * Remove six dependency;
