@@ -564,7 +564,7 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         "--version",
         action="version",
         version="{package} {version}".format(
-            package=__package__, version=get_version()
+            package=__package__ or "ffsubsync", version=get_version()
         ),
     )
     parser.add_argument(
