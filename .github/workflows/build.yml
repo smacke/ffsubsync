@@ -1,0 +1,100 @@
+name: ffsubsync build
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-binaries:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+
+          - os: ubuntu-latest
+            os-name: "linux"
+            python-version: "3.11"
+            arch: "x86_64"
+            build-deps: "pyinstaller"
+
+          - os: ubuntu-latest
+            os-name: "linux"
+            python-version: "3.11"
+            arch: "arm64"
+            build-deps: "pyinstaller"
+
+          - os: macos-latest
+            os-name: "macos"
+            python-version: "3.11"
+            arch: "x86_64"
+            build-deps: "pyinstaller"
+
+          - os: macos-latest
+            os-name: "macos"
+            python-version: "3.11"
+            arch: "arm64"
+            build-deps: "pyinstaller"
+
+          - os: windows-latest
+            os-name: "windows"
+            python-version: "3.11"
+            arch: "x86_64"
+            build-deps: "pyinstaller setuptools wheel webrtcvad"
+
+    steps:
+    - name: Check-out repository
+      uses: actions/checkout@v4
+
+    - name: Install UPX (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y upx-ucl
+
+    - name: Install UPX (macOS)
+      if: runner.os == 'macOS'
+      run: brew install upx
+
+    - name: Install UPX (Windows)
+      if: runner.os == 'Windows'
+      run: choco install upx
+
+    - name: Prepare build requirements
+      run: echo "${{ matrix.build-deps }}" | tr ' ' '\n' > requirements-build.txt
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: pip
+        cache-dependency-path: |
+          requirements.txt
+          requirements-build.txt
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-build.txt
+
+    - name: Build executable with PyInstaller
+      run: |
+        echo 'FFSUBSYNC_VERSION = "${{ github.event.release.tag_name }}"' > ffsubsync/__version.py
+        pyinstaller --onefile --name ffsubsync ffsubsync/ffsubsync.py
+
+    - name: Smoke test
+      run: ./dist/ffsubsync --version || ./dist/ffsubsync.exe --version
+
+    - name: Package binary
+      shell: bash
+      run: |
+        cd dist
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          powershell Compress-Archive -Path ffsubsync.exe -DestinationPath "${{ matrix.os-name }}-${{ matrix.arch }}.zip"
+        else
+          tar -czf "${{ matrix.os-name }}-${{ matrix.arch }}.tar.gz" ffsubsync
+        fi
+
+    - name: Upload binaries to GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./dist/${{ matrix.os-name }}-${{ matrix.arch }}.*
