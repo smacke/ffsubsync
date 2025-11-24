@@ -1,6 +1,10 @@
 History
 =======
 
+0.4.31 (2025-11-23)
+-------------------
+* Add support for Python 3.14;
+
 0.4.30 (2025-09-01)
 -------------------
 * Remove faust-cchardent dependency on Python 3.13;
