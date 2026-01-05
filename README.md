@@ -65,6 +65,24 @@ ffsubsync reference.srt -i unsynchronized.srt -o synchronized.srt
 `ffsubsync` uses the file extension to decide whether to perform voice activity
 detection on the audio or to directly extract speech from an srt file.
 
+Remote URL Support
+------------------
+`ffsubsync` supports using remote URLs as video references. This allows you to
+sync subtitles directly with online video content without downloading the file first:
+
+~~~
+ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt
+~~~
+
+Supported protocols include:
+- `http://` and `https://`
+- `rtmp://` (streaming)
+- `rtsp://` (streaming)
+- `ftp://`
+
+**Note**: Remote URL processing depends on network stability. For large files or
+unstable connections, consider downloading the video first for more reliable results.
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:

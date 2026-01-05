@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from typing import cast, Any, Callable, Dict, List, Optional, Tuple, Union
+from urllib.parse import urlparse
 
 import numpy as np
 
@@ -39,6 +40,71 @@ from ffsubsync.version import get_version
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+# Supported remote URL protocols, easy to maintain and extend
+REMOTE_URL_PROTOCOLS: Tuple[str, ...] = (
+    'http://',
+    'https://',
+    'rtmp://',
+    'rtsp://',
+    'ftp://',
+)
+
+
+def is_remote_url(path: Optional[str]) -> bool:
+    """Check if the path is a remote URL.
+    
+    Args:
+        path: File path or URL.
+        
+    Returns:
+        True if the path is a remote URL, False otherwise.
+    """
+    if path is None:
+        return False
+    return path.startswith(REMOTE_URL_PROTOCOLS)
+
+
+def validate_remote_url(url: str, timeout: int = 10) -> bool:
+    """Check if a remote URL is accessible.
+    
+    Tries HEAD request first, falls back to GET request (reading minimal data) if not supported.
+    
+    Args:
+        url: The URL to check.
+        timeout: Timeout in seconds.
+        
+    Returns:
+        True if URL is accessible, False otherwise.
+    """
+    import urllib.request
+    import urllib.error
+    
+    # Only pre-check http/https, skip other protocols (rtmp, etc.)
+    if not url.startswith(('http://', 'https://')):
+        return True
+    
+    try:
+        # Try HEAD request first
+        req = urllib.request.Request(url, method='HEAD')
+        req.add_header('User-Agent', 'ffsubsync')
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
+    except (urllib.error.HTTPError, urllib.error.URLError):
+        pass
+    except Exception:
+        pass
+    
+    # Fallback: use GET request, read minimal data to verify accessibility
+    try:
+        req = urllib.request.Request(url, method='GET')
+        req.add_header('User-Agent', 'ffsubsync')
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            # Read minimal data to verify connection
+            response.read(1024)
+            return True
+    except Exception:
+        return False
+
 
 def override(args: argparse.Namespace, **kwargs: Any) -> Dict[str, Any]:
     args_dict = dict(args.__dict__)
@@ -57,8 +123,14 @@ def make_test_case(
 ) -> int:
     if npy_savename is None:
         raise ValueError("need non-null npy_savename")
+    # Handle directory name generation for remote URL (URL cannot be used directly as directory name)
+    if is_remote_url(args.reference):
+        parsed = urlparse(args.reference)
+        ref_name = os.path.basename(parsed.path) or parsed.netloc.replace('.', '_')
+    else:
+        ref_name = args.reference
     tar_dir = "{}.{}".format(
-        args.reference, datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        ref_name, datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     )
     logger.info("creating test archive {}.tar.gz...".format(tar_dir))
     os.mkdir(tar_dir)
@@ -71,7 +143,11 @@ def make_test_case(
         if sync_was_successful:
             shutil.move(args.srtout, tar_dir)
         if _ref_format(args.reference) in SUBTITLE_EXTENSIONS:
-            shutil.copy(args.reference, tar_dir)
+            # Remote URL subtitles cannot be copied directly, show warning
+            if is_remote_url(args.reference):
+                logger.warning("Remote URL reference cannot be included in test case archive")
+            else:
+                shutil.copy(args.reference, tar_dir)
         elif args.serialize_speech or args.reference == npy_savename:
             shutil.copy(npy_savename, tar_dir)
         else:
@@ -373,10 +449,18 @@ def validate_file_permissions(args: argparse.Namespace) -> None:
         "unable to {action} {file}; "
         "try ensuring file exists and has correct permissions"
     )
-    if args.reference is not None and not os.access(args.reference, os.R_OK):
-        raise ValueError(
-            error_string_template.format(action="read reference", file=args.reference)
-        )
+    # Remote URLs are checked for accessibility, local files are checked for permissions
+    if args.reference is not None:
+        if is_remote_url(args.reference):
+            if not validate_remote_url(args.reference):
+                raise ValueError(
+                    "unable to access remote URL: {}; "
+                    "please check the URL is correct and accessible".format(args.reference)
+                )
+        elif not os.access(args.reference, os.R_OK):
+            raise ValueError(
+                error_string_template.format(action="read reference", file=args.reference)
+            )
     if args.srtin:
         for srtin in args.srtin:
             if srtin is not None and not os.access(srtin, os.R_OK):
@@ -396,7 +480,7 @@ def validate_file_permissions(args: argparse.Namespace) -> None:
             )
         )
     if args.make_test_case or args.serialize_speech:
-        npy_savename = os.path.splitext(args.reference)[0] + ".npz"
+        npy_savename = _npy_savename(args)
         if os.path.exists(npy_savename) and not os.access(npy_savename, os.W_OK):
             raise ValueError(
                 "unable to write test case file archive %s (try checking permissions)"
@@ -420,6 +504,20 @@ def _setup_logging(
 
 
 def _npy_savename(args: argparse.Namespace) -> str:
+    """Generate NPZ save filename.
+    
+    Handles both local paths and remote URLs. For URLs, extracts filename;
+    if extraction fails, uses domain + timestamp as fallback.
+    """
+    if is_remote_url(args.reference):
+        parsed = urlparse(args.reference)
+        # Extract filename from URL path, remove extension
+        base_name = os.path.splitext(os.path.basename(parsed.path))[0]
+        # If URL path is empty or just '/', use domain + timestamp as base name (prevent overwriting)
+        if not base_name:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = parsed.netloc.replace('.', '_') + "_" + timestamp
+        return base_name + ".npz"
     return os.path.splitext(args.reference)[0] + ".npz"
 
 
