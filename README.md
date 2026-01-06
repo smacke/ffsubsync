@@ -83,6 +83,44 @@ Supported protocols include:
 **Note**: Remote URL processing depends on network stability. For large files or
 unstable connections, consider downloading the video first for more reliable results.
 
+### Performance Optimization for Remote URLs
+
+For faster processing of remote videos, you can use these options:
+
+~~~
+# Extract audio to temp file first (recommended for remote URLs)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --extract-audio-first
+
+# Only process first N seconds (useful for long videos)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --max-duration-seconds 600
+
+# Combine both for maximum speed
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --extract-audio-first --max-duration-seconds 600
+~~~
+
+**Speed comparison** (for a 2-hour remote video):
+| Method | Approximate Time |
+|--------|------------------|
+| Direct streaming | ~20 minutes |
+| `--extract-audio-first` | ~5-8 minutes |
+| `--max-duration-seconds 600` | ~3-5 minutes |
+
+### Frame Rate and Accuracy
+
+The default frame rate (48000 Hz) provides maximum accuracy. For faster processing
+with acceptable accuracy loss, you can lower it:
+
+~~~
+# Faster processing with slightly reduced accuracy
+ffs video.mp4 -i sub.srt -o out.srt --frame-rate 16000
+~~~
+
+| Frame Rate | Speed | Accuracy |
+|------------|-------|----------|
+| 48000 (default) | Baseline | Highest |
+| 16000 | ~3x faster | High (recommended minimum) |
+| 8000 | ~6x faster | Medium (may have ±0.1s error) |
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import tempfile
 from contextlib import contextmanager
 import logging
 import io
@@ -7,6 +8,7 @@ import subprocess
 import sys
 from datetime import timedelta
 from typing import cast, Callable, Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 import ffmpeg
 import numpy as np
@@ -18,6 +20,7 @@ from ffsubsync.constants import (
     DEFAULT_SCALE_FACTOR,
     DEFAULT_START_SECONDS,
     SAMPLE_RATE,
+    is_remote_url,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path, subprocess_args
 from ffsubsync.generic_subtitles import GenericSubtitle
@@ -237,6 +240,8 @@ class VideoSpeechTransformer(TransformerMixin):
         ref_stream: Optional[str] = None,
         vlc_mode: bool = False,
         gui_mode: bool = False,
+        extract_audio_first: bool = False,
+        max_duration_seconds: Optional[int] = None,
     ) -> None:
         super(VideoSpeechTransformer, self).__init__()
         self.vad: str = vad
@@ -248,7 +253,122 @@ class VideoSpeechTransformer(TransformerMixin):
         self.ref_stream: Optional[str] = ref_stream
         self.vlc_mode: bool = vlc_mode
         self.gui_mode: bool = gui_mode
+        self.extract_audio_first: bool = extract_audio_first
+        self.max_duration_seconds: Optional[int] = max_duration_seconds
         self.video_speech_results_: Optional[np.ndarray] = None
+        self._temp_audio_file: Optional[str] = None
+
+    def _extract_audio_to_temp(self, url: str) -> str:
+        """Extract audio from remote URL to local temp file."""
+        # Determine audio extension from URL or use default
+        parsed = urlparse(url)
+        ext = os.path.splitext(parsed.path)[1] or '.m4a'
+        if ext not in ['.m4a', '.aac', '.mp3', '.wav', '.ogg']:
+            ext = '.m4a'
+        
+        # Create temp file
+        fd, temp_path = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        
+        logger.info("Extracting audio from remote URL to temp file...")
+        
+        # Get total duration first for progress bar and smart duration limit
+        total_duration = None
+        effective_max_duration = self.max_duration_seconds
+        try:
+            total_duration = float(
+                ffmpeg.probe(
+                    url,
+                    cmd=ffmpeg_bin_path(
+                        "ffprobe", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+                    ),
+                )["format"]["duration"]
+            )
+            # Smart adjustment: if max_duration_seconds exceeds video duration, use actual duration
+            if self.max_duration_seconds and total_duration:
+                if self.max_duration_seconds > total_duration:
+                    logger.info(
+                        "max_duration_seconds (%d) exceeds video duration (%.1f), using actual duration",
+                        self.max_duration_seconds, total_duration
+                    )
+                    effective_max_duration = int(total_duration)
+                total_duration = min(total_duration, self.max_duration_seconds)
+        except Exception:
+            pass
+        
+        ffmpeg_args = [
+            ffmpeg_bin_path(
+                "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+            ),
+            "-loglevel", "info",
+            "-stats",
+            "-i", url,
+            "-vn",  # No video
+            "-acodec", "copy",  # Copy audio codec (fast)
+        ]
+        if effective_max_duration:
+            ffmpeg_args.extend(["-t", str(effective_max_duration)])
+        ffmpeg_args.extend(["-y", temp_path])
+        
+        try:
+            process = subprocess.Popen(
+                ffmpeg_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            
+            # Use tqdm for progress display (consistent with project style)
+            with tqdm.tqdm(
+                total=total_duration,
+                unit="s",
+                desc="Extracting audio",
+                disable=self.vlc_mode
+            ) as pbar:
+                current_time = 0.0
+                while True:
+                    line = process.stderr.readline()
+                    if not line and process.poll() is not None:
+                        break
+                    if line and "time=" in line:
+                        # Parse time from ffmpeg output (format: time=HH:MM:SS.xx)
+                        try:
+                            time_str = line.split("time=")[1].split()[0]
+                            parts = time_str.split(":")
+                            new_time = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                            if new_time > current_time:
+                                pbar.update(new_time - current_time)
+                                current_time = new_time
+                        except (IndexError, ValueError):
+                            pass
+            
+            returncode = process.wait()
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, ffmpeg_args)
+            
+            logger.info("...audio extraction complete: %s", temp_path)
+            self._temp_audio_file = temp_path
+            return temp_path
+        except subprocess.CalledProcessError as e:
+            # Cleanup on failure
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            logger.warning("Audio extraction failed, falling back to direct streaming: %s", e)
+            raise
+
+    def _cleanup_temp_file(self) -> None:
+        """Clean up temporary audio file if exists."""
+        if self._temp_audio_file and os.path.exists(self._temp_audio_file):
+            try:
+                os.unlink(self._temp_audio_file)
+                logger.info("Cleaned up temp file: %s", self._temp_audio_file)
+            except Exception as e:
+                logger.warning("Failed to cleanup temp file: %s", e)
+            self._temp_audio_file = None
+
+    def __del__(self):
+        """Destructor to ensure temp file cleanup."""
+        self._cleanup_temp_file()
 
     def try_fit_using_embedded_subs(self, fname: str) -> None:
         embedded_subs = []
@@ -302,6 +422,23 @@ class VideoSpeechTransformer(TransformerMixin):
         self.video_speech_results_ = subs_to_use.subtitle_speech_results_
 
     def fit(self, fname: str, *_) -> "VideoSpeechTransformer":
+        # For remote URLs with extract_audio_first, extract audio to temp file
+        original_fname = fname
+        if self.extract_audio_first and is_remote_url(fname):
+            try:
+                fname = self._extract_audio_to_temp(fname)
+            except Exception as e:
+                logger.warning("Failed to extract audio, using direct streaming: %s", e)
+                fname = original_fname
+        
+        try:
+            return self._fit_impl(fname)
+        finally:
+            # Clean up temp file after processing
+            self._cleanup_temp_file()
+
+    def _fit_impl(self, fname: str) -> "VideoSpeechTransformer":
+        """Internal implementation of fit method."""
         if "subs" in self.vad and (
             self.ref_stream is None or self.ref_stream.startswith("0:s:")
         ):
@@ -312,6 +449,8 @@ class VideoSpeechTransformer(TransformerMixin):
                 return self
             except Exception as e:
                 logger.info(e)
+        # Get total duration and apply smart max_duration_seconds adjustment
+        effective_max_duration = self.max_duration_seconds
         try:
             total_duration = (
                 float(
@@ -326,6 +465,16 @@ class VideoSpeechTransformer(TransformerMixin):
                 )
                 - self.start_seconds
             )
+            # Smart adjustment: if max_duration_seconds exceeds video duration, use actual duration
+            if self.max_duration_seconds and total_duration:
+                if self.max_duration_seconds > total_duration:
+                    logger.info(
+                        "max_duration_seconds (%d) exceeds video duration (%.1f), using actual duration",
+                        self.max_duration_seconds, total_duration
+                    )
+                    effective_max_duration = int(total_duration)
+                else:
+                    total_duration = min(total_duration, self.max_duration_seconds)
         except Exception as e:
             logger.warning(e)
             total_duration = None
@@ -357,6 +506,10 @@ class VideoSpeechTransformer(TransformerMixin):
                 ]
             )
         ffmpeg_args.extend(["-loglevel", "fatal", "-nostdin", "-i", fname])
+        # Add duration limit if specified (for faster processing)
+        if effective_max_duration and not self._temp_audio_file:
+            # Only add -t if not using pre-extracted audio (which already has duration limit)
+            ffmpeg_args.extend(["-t", str(effective_max_duration)])
         if self.ref_stream is not None and self.ref_stream.startswith("0:a:"):
             ffmpeg_args.extend(["-map", self.ref_stream])
         ffmpeg_args.extend(

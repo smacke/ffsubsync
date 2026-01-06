@@ -25,6 +25,8 @@ from ffsubsync.constants import (
     FRAMERATE_RATIOS,
     SAMPLE_RATE,
     SUBTITLE_EXTENSIONS,
+    REMOTE_URL_PROTOCOLS,
+    is_remote_url,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
 from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
@@ -39,29 +41,6 @@ from ffsubsync.version import get_version
 
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-# Supported remote URL protocols, easy to maintain and extend
-REMOTE_URL_PROTOCOLS: Tuple[str, ...] = (
-    'http://',
-    'https://',
-    'rtmp://',
-    'rtsp://',
-    'ftp://',
-)
-
-
-def is_remote_url(path: Optional[str]) -> bool:
-    """Check if the path is a remote URL.
-    
-    Args:
-        path: File path or URL.
-        
-    Returns:
-        True if the path is a remote URL, False otherwise.
-    """
-    if path is None:
-        return False
-    return path.startswith(REMOTE_URL_PROTOCOLS)
 
 
 def validate_remote_url(url: str, timeout: int = 10) -> bool:
@@ -336,6 +315,8 @@ def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
                         ref_stream=ref_stream,
                         vlc_mode=args.vlc_mode,
                         gui_mode=args.gui_mode,
+                        extract_audio_first=getattr(args, 'extract_audio_first', False),
+                        max_duration_seconds=getattr(args, 'max_duration_seconds', None),
                     ),
                 ),
             ]
@@ -799,6 +780,19 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         "--strict",
         action="store_true",
         help="If specified, refuse to parse srt files with formatting issues.",
+    )
+    parser.add_argument(
+        "--extract-audio-first",
+        action="store_true",
+        help="For remote URLs, extract audio to local temp file before processing. "
+             "This can significantly speed up processing for remote videos.",
+    )
+    parser.add_argument(
+        "--max-duration-seconds",
+        type=int,
+        default=None,
+        help="Only process first N seconds of video for faster sync. "
+             "Useful for long videos where offset is typically detectable early.",
     )
     parser.add_argument("--vlc-mode", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--gui-mode", action="store_true", help=argparse.SUPPRESS)
