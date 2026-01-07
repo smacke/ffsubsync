@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import math
-from typing import List, Optional, Tuple, Type, Union
+from typing import List, Optional, Tuple, Type, Union, Dict
 
 import numpy as np
 
@@ -19,6 +19,82 @@ MAX_FRAMERATE_RATIO = 1.1
 
 class FailedToFindAlignmentException(Exception):
     pass
+
+
+def compute_weighted_median_offset(
+    segment_results: List[Dict],
+    min_score: float = 0.3,
+    max_offset_variance: float = 5.0
+) -> Tuple[float, float, List[Dict]]:
+    """Compute weighted median offset from multiple segment alignment results.
+    
+    Args:
+        segment_results: List of dicts with 'offset_seconds', 'score', 'segment_start' keys.
+        min_score: Minimum score threshold to include a segment.
+        max_offset_variance: Maximum allowed variance in offsets (seconds) before warning.
+        
+    Returns:
+        Tuple of (median_offset_seconds, combined_score, filtered_results).
+        
+    Raises:
+        FailedToFindAlignmentException: If no valid segments found.
+    """
+    # Filter segments by score
+    valid_segments = [s for s in segment_results if s.get('score', 0) >= min_score]
+    
+    if len(valid_segments) == 0:
+        # Try with lower threshold
+        valid_segments = [s for s in segment_results if s.get('score', 0) > 0]
+        if len(valid_segments) == 0:
+            raise FailedToFindAlignmentException(
+                "Multi-segment sync failed: no segments with positive score"
+            )
+        logger.warning(
+            "No segments with score >= %.2f, using %d segments with lower scores",
+            min_score, len(valid_segments)
+        )
+    
+    # Extract offsets and scores
+    offsets = np.array([s['offset_seconds'] for s in valid_segments])
+    scores = np.array([s['score'] for s in valid_segments])
+    
+    # Check variance
+    offset_variance = np.var(offsets)
+    if offset_variance > max_offset_variance:
+        logger.warning(
+            "High variance in segment offsets (%.2f): segments may have different time shifts. "
+            "Consider using single-segment sync or checking video source.",
+            offset_variance
+        )
+    
+    # Compute weighted median
+    # Sort by offset
+    sorted_indices = np.argsort(offsets)
+    sorted_offsets = offsets[sorted_indices]
+    sorted_scores = scores[sorted_indices]
+    
+    # Weighted median: find the offset where cumulative weight >= 50%
+    total_weight = np.sum(sorted_scores)
+    cumulative_weight = np.cumsum(sorted_scores)
+    median_idx = np.searchsorted(cumulative_weight, total_weight / 2)
+    median_idx = min(median_idx, len(sorted_offsets) - 1)
+    
+    median_offset = sorted_offsets[median_idx]
+    combined_score = np.mean(scores)  # Average score
+    
+    logger.info(
+        "Multi-segment sync: %d/%d valid segments, median_offset=%.3fs, avg_score=%.3f, variance=%.3f",
+        len(valid_segments), len(segment_results), median_offset, combined_score, offset_variance
+    )
+    
+    # Add detailed log
+    for s in valid_segments:
+        logger.debug(
+            "  Segment @%ds: offset=%.3fs, score=%.3f",
+            s.get('segment_start', 0), s['offset_seconds'], s['score']
+        )
+    
+    return median_offset, combined_score, valid_segments
 
 
 class FFTAligner(TransformerMixin):
@@ -52,6 +128,12 @@ class FFTAligner(TransformerMixin):
             list(map(int, s)) if isinstance(s, str) else s
             for s in [refstring, substring]
         ]
+        # Check for empty arrays before FFT
+        if len(refstring) == 0 or len(substring) == 0:
+            raise FailedToFindAlignmentException(
+                "Cannot align empty speech data (refstring=%d, substring=%d)" 
+                % (len(refstring), len(substring))
+            )
         refstring, substring = map(
             lambda s: 2 * np.array(s).astype(float) - 1, [refstring, substring]
         )

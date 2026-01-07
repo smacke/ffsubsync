@@ -20,6 +20,29 @@ DEFAULT_APPLY_OFFSET_SECONDS: int = 0
 
 SUBTITLE_EXTENSIONS: Tuple[str, ...] = ("srt", "ass", "ssa", "sub")
 
+# Supported remote URL protocols, easy to maintain and extend
+REMOTE_URL_PROTOCOLS: Tuple[str, ...] = (
+    'http://',
+    'https://',
+    'rtmp://',
+    'rtsp://',
+    'ftp://',
+)
+
+
+def is_remote_url(path) -> bool:
+    """Check if the path is a remote URL.
+    
+    Args:
+        path: File path or URL.
+        
+    Returns:
+        True if the path is a remote URL, False otherwise.
+    """
+    if path is None:
+        return False
+    return path.startswith(REMOTE_URL_PROTOCOLS)
+
 GITHUB_DEV_USER: str = "smacke"
 PROJECT_NAME: str = "FFsubsync"
 PROJECT_LICENSE: str = "MIT"
