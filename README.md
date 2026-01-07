@@ -104,6 +104,46 @@ ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --extract-audio-first 
 | Direct streaming | ~20 minutes |
 | `--extract-audio-first` | ~5-8 minutes |
 | `--max-duration-seconds 600` | ~3-5 minutes |
+| `--multi-segment-sync` | ~2-4 minutes |
+
+### Multi-Segment Sync (Recommended for Long Remote Videos)
+
+For long remote videos, multi-segment sync samples multiple short segments instead of
+processing the entire video. This is significantly faster and more robust:
+
+~~~
+# Enable multi-segment sync (default: 8 segments × 60 seconds each)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync
+
+# Customize segment count (more segments = more accurate but slower)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync --segment-count 10
+
+# Skip intro/outro (first 30s and last 60s) to avoid silent sections
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync --skip-intro-outro
+
+# Adjust parallel workers for segment extraction (default=4)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync --parallel-workers 6
+~~~
+
+**How it works**:
+1. Probes video duration
+2. Extracts N segments in parallel (default 4 workers) for faster download
+3. Samples N segments (default 8) distributed evenly across the video
+4. Computes alignment offset for each segment using VAD
+5. Returns weighted median offset (filters noise/outliers by score)
+
+**Options**:
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--segment-count` | 8 | Number of 60-second segments to sample |
+| `--skip-intro-outro` | off | Skip first 30s and last 60s (intro/credits) |
+| `--parallel-workers` | 4 | Parallel workers for segment extraction |
+
+**Benefits**:
+- ~80-90% faster than full video processing for 2+ hour videos
+- Parallel extraction further speeds up remote URL processing (~60% faster)
+- More robust against localized noise (ads, silent sections)
+- Automatically falls back to single-segment if video is too short
 
 ### Frame Rate and Accuracy
 

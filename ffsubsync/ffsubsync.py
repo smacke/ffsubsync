@@ -1,18 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import logging
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import cast, Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import numpy as np
 
-from ffsubsync.aligners import FFTAligner, MaxScoreAligner
+from ffsubsync.aligners import FFTAligner, MaxScoreAligner, compute_weighted_median_offset
 from ffsubsync.constants import (
     DEFAULT_APPLY_OFFSET_SECONDS,
     DEFAULT_FRAME_RATE,
@@ -176,6 +178,277 @@ def get_framerate_ratios_to_try(args: argparse.Namespace) -> List[Optional[float
         return framerate_ratios
 
 
+def try_multi_segment_sync(
+    args: argparse.Namespace, result: Dict[str, Any]
+) -> bool:
+    """Perform multi-segment sync for remote URLs.
+    
+    Samples multiple segments from video, computes alignment for each,
+    and returns weighted median offset.
+    """
+    import ffmpeg
+    from ffsubsync.aligners import FailedToFindAlignmentException
+    
+    result["sync_was_successful"] = False
+    sync_was_successful = True
+    
+    # Get video duration first
+    try:
+        probe_result = ffmpeg.probe(
+            args.reference,
+            cmd=ffmpeg_bin_path("ffprobe", args.gui_mode, ffmpeg_resources_path=args.ffmpeg_path),
+        )
+        total_duration = float(probe_result["format"]["duration"])
+    except Exception as e:
+        logger.error("Failed to probe video duration: %s", e)
+        logger.info("Falling back to single-segment sync...")
+        return try_sync(args, make_reference_pipe(args).fit(args.reference), result)
+    
+    logger.info("Video duration: %.1f seconds", total_duration)
+    
+    # Validate total_duration
+    if total_duration <= 0:
+        logger.error("Invalid video duration: %.1f seconds", total_duration)
+        logger.info("Falling back to single-segment sync...")
+        return try_sync(args, make_reference_pipe(args).fit(args.reference), result)
+    
+    # Calculate segment positions using VideoSpeechTransformer's method
+    # Create a temporary transformer to use its segment calculation logic
+    vad = args.vad or DEFAULT_VAD
+    segment_calculator = VideoSpeechTransformer(
+        vad=vad,
+        sample_rate=SAMPLE_RATE,
+        frame_rate=args.frame_rate,
+        non_speech_label=args.non_speech_label,
+        segment_count=getattr(args, 'segment_count', 8),
+        skip_intro_outro=getattr(args, 'skip_intro_outro', False),
+    )
+    segments = segment_calculator._calculate_segment_positions(total_duration)
+    
+    if len(segments) < 2:
+        logger.warning("Video too short for multi-segment sync, using single-segment...")
+        return try_sync(args, make_reference_pipe(args).fit(args.reference), result)
+    
+    logger.info("Processing %d segments: %s", len(segments), 
+               [(s['start'], s['start'] + s['duration']) for s in segments])
+    
+    if not args.srtin:
+        args.srtin = [None]
+    
+    def _cleanup_temp_files(temp_files: List[str]) -> None:
+        """Helper to cleanup temp files."""
+        for temp_path in temp_files:
+            try:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            except Exception:
+                pass
+    
+    for srtin in args.srtin:
+        temp_files: List[str] = []
+        try:
+            srtout = srtin if args.overwrite_input else args.srtout
+            srt_pipe_maker = get_srt_pipe_maker(args, srtin)
+            
+            # Fit subtitle pipe once
+            srt_pipe = cast(Pipeline, srt_pipe_maker(1.0))
+            srt_pipe.fit(srtin)
+            subtitle_speech = srt_pipe.transform(srtin)
+            
+            segment_results = []
+            
+            # Define segment extraction function for parallel execution
+            def extract_segment(seg: Dict) -> Tuple[int, Optional[str]]:
+                """Extract a single segment, returns (index, temp_path or None)."""
+                fd, temp_path = tempfile.mkstemp(suffix='.wav')
+                os.close(fd)
+                
+                ffmpeg_args = [
+                    ffmpeg_bin_path("ffmpeg", args.gui_mode, ffmpeg_resources_path=args.ffmpeg_path),
+                    "-loglevel", "warning",
+                    "-ss", str(seg['start']),
+                    "-i", args.reference,
+                    "-t", str(seg['duration']),
+                    "-vn",
+                    "-acodec", "pcm_s16le",
+                    "-ar", str(args.frame_rate),
+                    "-ac", "1",
+                    "-y", temp_path
+                ]
+                
+                # Dynamic timeout: base 60s + 2s per segment second (for slow networks)
+                segment_timeout = 60 + seg['duration'] * 2
+                max_retries = 2
+                
+                for retry in range(max_retries):
+                    try:
+                        subprocess.run(ffmpeg_args, capture_output=True, check=True, timeout=segment_timeout)
+                        return seg['index'], temp_path
+                    except subprocess.TimeoutExpired:
+                        logger.warning("Timeout extracting segment %d (attempt %d/%d)", 
+                                      seg['index'], retry + 1, max_retries)
+                    except subprocess.CalledProcessError as e:
+                        logger.warning("Failed to extract segment %d (attempt %d/%d): %s", 
+                                      seg['index'], retry + 1, max_retries, 
+                                      e.stderr[:200] if e.stderr else str(e))
+                    except Exception as e:
+                        logger.warning("Error extracting segment %d (attempt %d/%d): %s", 
+                                      seg['index'], retry + 1, max_retries, e)
+                
+                # Cleanup on failure
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                logger.warning("Giving up on segment %d after %d attempts", seg['index'], max_retries)
+                return seg['index'], None
+            
+            # Parallel extraction of all segments
+            parallel_workers = min(getattr(args, 'parallel_workers', 4), len(segments))
+            logger.info("Extracting %d segments in parallel (workers=%d)...", len(segments), parallel_workers)
+            
+            extracted_segments: Dict[int, str] = {}
+            with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+                futures = {executor.submit(extract_segment, seg): seg for seg in segments}
+                for future in as_completed(futures):
+                    seg = futures[future]
+                    try:
+                        idx, temp_path = future.result()
+                        if temp_path:
+                            extracted_segments[idx] = temp_path
+                            temp_files.append(temp_path)
+                            logger.info("  Segment %d extracted successfully", idx)
+                    except Exception as e:
+                        logger.warning("Unexpected error extracting segment %d: %s", seg['index'], e)
+            
+            logger.info("Extraction complete: %d/%d segments successful", len(extracted_segments), len(segments))
+            
+            # Process extracted segments sequentially (VAD + alignment)
+            for seg in segments:
+                if seg['index'] not in extracted_segments:
+                    continue
+                    
+                temp_path = extracted_segments[seg['index']]
+                logger.info("Processing segment %d/%d (start=%ds)...", 
+                           seg['index'] + 1, len(segments), seg['start'])
+                
+                # Create a VideoSpeechTransformer for this segment
+                vad = args.vad or DEFAULT_VAD
+                segment_transformer = VideoSpeechTransformer(
+                    vad=vad,
+                    sample_rate=SAMPLE_RATE,
+                    frame_rate=args.frame_rate,
+                    non_speech_label=args.non_speech_label,
+                    start_seconds=0,
+                    ffmpeg_path=args.ffmpeg_path,
+                    vlc_mode=args.vlc_mode,
+                    gui_mode=args.gui_mode,
+                )
+                
+                try:
+                    segment_transformer.fit(temp_path)
+                    ref_speech = segment_transformer.transform(temp_path)
+                    
+                    # Compute alignment for this segment
+                    # Adjust subtitle speech to match segment time range
+                    seg_start_frame = int(seg['start'] * SAMPLE_RATE)
+                    seg_end_frame = int((seg['start'] + seg['duration']) * SAMPLE_RATE)
+                    
+                    # Ensure we don't exceed bounds
+                    if seg_start_frame >= len(subtitle_speech):
+                        logger.warning("Segment %d beyond subtitle range, skipping", seg['index'])
+                        continue
+                    
+                    seg_end_frame = min(seg_end_frame, len(subtitle_speech))
+                    sub_segment = subtitle_speech[seg_start_frame:seg_end_frame]
+                    
+                    if len(sub_segment) == 0 or len(ref_speech) == 0:
+                        logger.warning("Empty segment %d, skipping", seg['index'])
+                        continue
+                    
+                    # Align
+                    max_offset = args.max_offset_seconds if args.max_offset_seconds else DEFAULT_MAX_OFFSET_SECONDS
+                    aligner = FFTAligner(max_offset_samples=int(max_offset * SAMPLE_RATE))
+                    aligner.fit(ref_speech, sub_segment, get_score=True)
+                    score, offset_samples = aligner.transform()
+                    
+                    offset_seconds = offset_samples / float(SAMPLE_RATE)
+                    
+                    segment_results.append({
+                        'segment_start': seg['start'],
+                        'segment_index': seg['index'],
+                        'offset_seconds': offset_seconds,
+                        'offset_samples': offset_samples,
+                        'score': score,
+                    })
+                    
+                    logger.info("  Segment %d: offset=%.3fs, score=%.3f", 
+                               seg['index'], offset_seconds, score)
+                    
+                except Exception as e:
+                    logger.warning("Failed to process segment %d: %s", seg['index'], e)
+                    continue
+            
+            # Compute weighted median offset
+            if len(segment_results) == 0:
+                logger.warning("No valid segments, falling back to single-segment sync")
+                return try_sync(args, make_reference_pipe(args).fit(args.reference), result)
+            
+            if len(segment_results) == 1:
+                # Use the single valid segment directly instead of re-processing
+                logger.info("Only 1 valid segment, using its result directly")
+                offset_seconds = segment_results[0]['offset_seconds']
+                best_score = segment_results[0]['score']
+                valid_segments = segment_results
+            else:
+                try:
+                    offset_seconds, best_score, valid_segments = compute_weighted_median_offset(
+                        segment_results,
+                        min_score=VideoSpeechTransformer.MIN_SEGMENT_SCORE
+                    )
+                except FailedToFindAlignmentException as e:
+                    logger.error("Multi-segment alignment failed: %s", e)
+                    sync_was_successful = False
+                    continue
+            
+            offset_seconds += args.apply_offset_seconds
+            
+            logger.info("Final offset: %.3f seconds (from %d segments)", offset_seconds, len(valid_segments))
+            logger.info("Average score: %.3f", best_score)
+            
+            # Apply offset
+            scale_step = srt_pipe.named_steps["scale"]
+            output_steps: List[Tuple[str, TransformerMixin]] = [
+                ("shift", SubtitleShifter(offset_seconds))
+            ]
+            output_pipe = Pipeline(output_steps)
+            out_subs = output_pipe.fit_transform(scale_step.subs_)
+            
+            if args.output_encoding != "same":
+                out_subs = out_subs.set_encoding(args.output_encoding)
+            
+            suppress_output_thresh = args.suppress_output_if_offset_less_than
+            if offset_seconds >= (suppress_output_thresh or float("-inf")):
+                logger.info("writing output to {}".format(srtout or "stdout"))
+                out_subs.write_file(srtout)
+            else:
+                logger.warning(
+                    "suppressing output because offset %s was less than suppression threshold %s",
+                    offset_seconds, suppress_output_thresh
+                )
+            
+            result["offset_seconds"] = offset_seconds
+            result["segment_count"] = len(valid_segments)
+            
+        except Exception:
+            sync_was_successful = False
+            logger.exception("failed to sync %s", srtin)
+        finally:
+            # Ensure temp files are cleaned up even on exception
+            _cleanup_temp_files(temp_files)
+    
+    result["sync_was_successful"] = sync_was_successful
+    return sync_was_successful
+
+
 def try_sync(
     args: argparse.Namespace, reference_pipe: Optional[Pipeline], result: Dict[str, Any]
 ) -> bool:
@@ -317,6 +590,8 @@ def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
                         gui_mode=args.gui_mode,
                         extract_audio_first=getattr(args, 'extract_audio_first', False),
                         max_duration_seconds=getattr(args, 'max_duration_seconds', None),
+                        multi_segment_sync=getattr(args, 'multi_segment_sync', False),
+                        segment_count=getattr(args, 'segment_count', 8),
                     ),
                 ),
             ]
@@ -511,6 +786,12 @@ def _run_impl(args: argparse.Namespace, result: Dict[str, Any]) -> bool:
         or (len(args.srtin) == 1 and args.srtin[0] == args.reference)
     ):
         return try_sync(args, None, result)
+    
+    # Use multi-segment sync for remote URLs when enabled
+    if getattr(args, 'multi_segment_sync', False) and is_remote_url(args.reference):
+        logger.info("Using multi-segment sync mode for remote URL...")
+        return try_multi_segment_sync(args, result)
+    
     reference_pipe = make_reference_pipe(args)
     logger.info("extracting speech segments from reference '%s'...", args.reference)
     reference_pipe.fit(args.reference)
@@ -793,6 +1074,33 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Only process first N seconds of video for faster sync. "
              "Useful for long videos where offset is typically detectable early.",
+    )
+    parser.add_argument(
+        "--multi-segment-sync",
+        action="store_true",
+        help="Enable multi-segment sync mode for remote URLs. "
+             "Samples multiple segments from video and computes weighted median offset. "
+             "Significantly faster for long remote videos.",
+    )
+    parser.add_argument(
+        "--segment-count",
+        type=int,
+        default=8,
+        help="Number of segments to sample when using --multi-segment-sync (default=8). "
+             "Each segment is 60 seconds. More segments = more accurate but slower.",
+    )
+    parser.add_argument(
+        "--skip-intro-outro",
+        action="store_true",
+        help="Skip intro/outro when using --multi-segment-sync. "
+             "Skips first 30s and last 60s of video (intro/credits often have no dialogue).",
+    )
+    parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=4,
+        help="Number of parallel workers for segment extraction in --multi-segment-sync (default=4). "
+             "Higher values may speed up remote URL processing but increase network load.",
     )
     parser.add_argument("--vlc-mode", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--gui-mode", action="store_true", help=argparse.SUPPRESS)
