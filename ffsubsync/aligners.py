@@ -238,3 +238,90 @@ class MaxScoreAligner(TransformerMixin):
             )
         (score, offset), subpipe = max(scores, key=lambda x: x[0][0])
         return (score, offset), subpipe
+
+
+class TwoPassAligner(TransformerMixin):
+    """Two-pass alignment for improved accuracy.
+    
+    First pass: Coarse alignment with large search range
+    Second pass: Fine alignment with small search range around coarse result
+    """
+    
+    def __init__(
+        self,
+        sample_rate: int,
+        coarse_max_offset_seconds: float = 60.0,
+        fine_max_offset_seconds: float = 5.0
+    ) -> None:
+        self.sample_rate = sample_rate
+        self.coarse_max_offset_seconds = coarse_max_offset_seconds
+        self.fine_max_offset_seconds = fine_max_offset_seconds
+        self.coarse_offset_: Optional[int] = None
+        self.coarse_score_: Optional[float] = None
+        self.fine_offset_: Optional[int] = None
+        self.fine_score_: Optional[float] = None
+        self.total_offset_: Optional[int] = None
+        self.final_score_: Optional[float] = None
+    
+    def fit(self, refstring: np.ndarray, substring: np.ndarray, get_score: bool = False) -> "TwoPassAligner":
+        """Perform two-pass alignment.
+        
+        Args:
+            refstring: Reference speech signal
+            substring: Subtitle speech signal
+            get_score: Whether to return score (always True for this aligner)
+        """
+        # First pass: Coarse alignment
+        coarse_max_samples = int(self.coarse_max_offset_seconds * self.sample_rate)
+        coarse_aligner = FFTAligner(max_offset_samples=coarse_max_samples)
+        coarse_aligner.fit(refstring, substring, get_score=True)
+        self.coarse_score_, self.coarse_offset_ = coarse_aligner.transform()
+        
+        logger.info(
+            "Two-pass alignment - coarse: score=%.1f, offset=%d samples (%.2fs)",
+            self.coarse_score_, self.coarse_offset_, self.coarse_offset_ / self.sample_rate
+        )
+        
+        # Apply coarse offset to substring
+        if self.coarse_offset_ >= 0:
+            shifted_substring = np.concatenate([
+                np.zeros(self.coarse_offset_),
+                substring[:len(substring) - self.coarse_offset_] if self.coarse_offset_ < len(substring) else []
+            ])
+        else:
+            abs_offset = abs(self.coarse_offset_)
+            shifted_substring = np.concatenate([
+                substring[abs_offset:] if abs_offset < len(substring) else [],
+                np.zeros(abs_offset)
+            ])
+        
+        # Ensure shifted_substring has same length as original
+        if len(shifted_substring) < len(substring):
+            shifted_substring = np.concatenate([shifted_substring, np.zeros(len(substring) - len(shifted_substring))])
+        elif len(shifted_substring) > len(substring):
+            shifted_substring = shifted_substring[:len(substring)]
+        
+        # Second pass: Fine alignment with smaller range
+        fine_max_samples = int(self.fine_max_offset_seconds * self.sample_rate)
+        fine_aligner = FFTAligner(max_offset_samples=fine_max_samples)
+        fine_aligner.fit(refstring, shifted_substring, get_score=True)
+        self.fine_score_, self.fine_offset_ = fine_aligner.transform()
+        
+        logger.info(
+            "Two-pass alignment - fine: score=%.1f, offset=%d samples (%.2fs)",
+            self.fine_score_, self.fine_offset_, self.fine_offset_ / self.sample_rate
+        )
+        
+        # Combine offsets
+        self.total_offset_ = self.coarse_offset_ + self.fine_offset_
+        self.final_score_ = self.fine_score_
+        
+        logger.info(
+            "Two-pass alignment - total: score=%.1f, offset=%d samples (%.2fs)",
+            self.final_score_, self.total_offset_, self.total_offset_ / self.sample_rate
+        )
+        
+        return self
+    
+    def transform(self, *_) -> Tuple[float, int]:
+        return self.final_score_, self.total_offset_

@@ -28,6 +28,7 @@ from ffsubsync.sklearn_shim import TransformerMixin
 from ffsubsync.sklearn_shim import Pipeline
 from ffsubsync.subtitle_parser import make_subtitle_parser
 from ffsubsync.subtitle_transformers import SubtitleScaler
+from ffsubsync.subtitle_preprocessor import preprocess_subtitles
 
 
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,7 @@ def make_subtitle_speech_pipeline(
     start_seconds: int = DEFAULT_START_SECONDS,
     scale_factor: float = DEFAULT_SCALE_FACTOR,
     parser=None,
+    preprocess_subtitles: bool = False,
     **kwargs,
 ) -> Union[Pipeline, Callable[[float], Pipeline]]:
     if parser is None:
@@ -58,20 +60,23 @@ def make_subtitle_speech_pipeline(
     assert parser.start_seconds == start_seconds
 
     def subpipe_maker(framerate_ratio):
-        return Pipeline(
-            [
-                ("parse", parser),
-                ("scale", SubtitleScaler(framerate_ratio)),
-                (
-                    "speech_extract",
-                    SubtitleSpeechTransformer(
-                        sample_rate=SAMPLE_RATE,
-                        start_seconds=start_seconds,
-                        framerate_ratio=framerate_ratio,
-                    ),
+        steps = [
+            ("parse", parser),
+        ]
+        if preprocess_subtitles:
+            steps.append(("preprocess", SubtitlePreprocessorTransformer()))
+        steps.extend([
+            ("scale", SubtitleScaler(framerate_ratio)),
+            (
+                "speech_extract",
+                SubtitleSpeechTransformer(
+                    sample_rate=SAMPLE_RATE,
+                    start_seconds=start_seconds,
+                    framerate_ratio=framerate_ratio,
                 ),
-            ]
-        )
+            ),
+        ])
+        return Pipeline(steps)
 
     if scale_factor is None:
         return subpipe_maker
@@ -234,6 +239,45 @@ def _make_silero_detector(
         
         return np.array(media_bstring)
 
+    return _detect
+
+
+def _make_fused_detector(
+    sample_rate: int, frame_rate: int, non_speech_label: float,
+    fusion_strategy: str = "weighted"
+) -> Callable[[bytes], np.ndarray]:
+    """Create a fused VAD detector combining webrtc and silero.
+    
+    Args:
+        sample_rate: Output sample rate (e.g., 100 Hz)
+        frame_rate: Audio sample rate (e.g., 48000 Hz)
+        non_speech_label: Label for non-speech segments
+        fusion_strategy: One of 'weighted', 'intersection', 'union'
+    """
+    webrtc_detector = _make_webrtcvad_detector(sample_rate, frame_rate, non_speech_label)
+    silero_detector = _make_silero_detector(sample_rate, frame_rate, non_speech_label)
+    
+    def _detect(asegment: bytes) -> np.ndarray:
+        webrtc_result = webrtc_detector(asegment)
+        silero_result = silero_detector(asegment)
+        
+        # Align lengths (they may differ slightly)
+        min_len = min(len(webrtc_result), len(silero_result))
+        webrtc_result = webrtc_result[:min_len]
+        silero_result = silero_result[:min_len]
+        
+        if fusion_strategy == "intersection":
+            # Conservative: only mark as speech if both agree
+            result = np.minimum(webrtc_result, silero_result)
+        elif fusion_strategy == "union":
+            # Aggressive: mark as speech if either detects
+            result = np.maximum(webrtc_result, silero_result)
+        else:  # weighted (default)
+            # Silero is generally more accurate, give it higher weight
+            result = 0.6 * silero_result + 0.4 * webrtc_result
+        
+        return result
+    
     return _detect
 
 
@@ -743,6 +787,16 @@ class VideoSpeechTransformer(TransformerMixin):
             detector = _make_silero_detector(
                 self.sample_rate, self.frame_rate, self._non_speech_label
             )
+        elif "fused" in self.vad:
+            # Extract fusion strategy from vad string (e.g., "fused:weighted", "fused:intersection")
+            if ":" in self.vad:
+                fusion_strategy = self.vad.split(":")[1]
+            else:
+                fusion_strategy = "weighted"
+            detector = _make_fused_detector(
+                self.sample_rate, self.frame_rate, self._non_speech_label,
+                fusion_strategy=fusion_strategy
+            )
         else:
             raise ValueError("unknown vad: %s" % self.vad)
         media_bstring: List[np.ndarray] = []
@@ -871,6 +925,52 @@ def _is_metadata(content: str, is_beginning_or_end: bool) -> bool:
         if " - " in content:
             return True
     return False
+
+
+class SubtitlePreprocessorTransformer(TransformerMixin):
+    """Transformer to preprocess subtitles before alignment."""
+    
+    def __init__(
+        self,
+        filter_non_dialogue: bool = True,
+        merge_short: bool = True,
+        min_duration: float = 0.3,
+        max_gap: float = 0.3,
+        min_keep_ratio: float = 0.3
+    ) -> None:
+        super(SubtitlePreprocessorTransformer, self).__init__()
+        self.filter_non_dialogue = filter_non_dialogue
+        self.merge_short = merge_short
+        self.min_duration = min_duration
+        self.max_gap = max_gap
+        self.min_keep_ratio = min_keep_ratio
+        self.subs_ = None
+    
+    def fit(self, subs, *_) -> "SubtitlePreprocessorTransformer":
+        # subs can be GenericSubtitlesFile or list of GenericSubtitle
+        if hasattr(subs, '__iter__') and not isinstance(subs, (str, bytes)):
+            subs_list = list(subs)
+        else:
+            subs_list = subs
+        
+        processed = preprocess_subtitles(
+            subs_list,
+            filter_non_dialogue=self.filter_non_dialogue,
+            merge_short=self.merge_short,
+            min_duration=self.min_duration,
+            max_gap=self.max_gap,
+            min_keep_ratio=self.min_keep_ratio
+        )
+        
+        # Preserve GenericSubtitlesFile wrapper if present
+        if hasattr(subs, 'clone_props_for_subs'):
+            self.subs_ = subs.clone_props_for_subs(processed)
+        else:
+            self.subs_ = processed
+        return self
+    
+    def transform(self, *_):
+        return self.subs_
 
 
 class SubtitleSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):

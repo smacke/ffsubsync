@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 import numpy as np
 
-from ffsubsync.aligners import FFTAligner, MaxScoreAligner, compute_weighted_median_offset
+from ffsubsync.aligners import FFTAligner, MaxScoreAligner, TwoPassAligner, compute_weighted_median_offset
 from ffsubsync.constants import (
     DEFAULT_APPLY_OFFSET_SECONDS,
     DEFAULT_FRAME_RATE,
@@ -162,8 +162,9 @@ def get_srt_pipe_maker(
     else:
         srtin_format = os.path.splitext(srtin)[-1][1:]
     parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
+    preprocess = getattr(args, 'preprocess_subtitles', False)
     return lambda scale_factor: make_subtitle_speech_pipeline(
-        **override(args, scale_factor=scale_factor, parser=parser)
+        **override(args, scale_factor=scale_factor, parser=parser, preprocess_subtitles=preprocess)
     )
 
 
@@ -558,12 +559,36 @@ def try_sync(
                 best_srt_pipe = cast(Pipeline, srt_pipes[0])
                 offset_samples = 0
             else:
-                (best_score, offset_samples), best_srt_pipe = MaxScoreAligner(
-                    FFTAligner, srtin, SAMPLE_RATE, args.max_offset_seconds
-                ).fit_transform(
-                    reference_pipe.transform(args.reference),
-                    srt_pipes,
-                )
+                # Choose aligner based on two-pass mode
+                if getattr(args, 'two_pass_align', False):
+                    # Two-pass alignment: use best srt_pipe from first pass, then refine
+                    # First, find best framerate ratio using standard aligner
+                    (coarse_score, coarse_offset), best_srt_pipe = MaxScoreAligner(
+                        FFTAligner, srtin, SAMPLE_RATE, args.max_offset_seconds
+                    ).fit_transform(
+                        reference_pipe.transform(args.reference),
+                        srt_pipes,
+                    )
+                    # Then do two-pass alignment with the best subtitle pipe
+                    fine_offset_seconds = getattr(args, 'fine_offset_seconds', 5.0)
+                    two_pass_aligner = TwoPassAligner(
+                        sample_rate=SAMPLE_RATE,
+                        coarse_max_offset_seconds=args.max_offset_seconds,
+                        fine_max_offset_seconds=fine_offset_seconds
+                    )
+                    two_pass_aligner.fit(
+                        reference_pipe.transform(args.reference),
+                        best_srt_pipe.transform(srtin),
+                        get_score=True
+                    )
+                    best_score, offset_samples = two_pass_aligner.transform()
+                else:
+                    (best_score, offset_samples), best_srt_pipe = MaxScoreAligner(
+                        FFTAligner, srtin, SAMPLE_RATE, args.max_offset_seconds
+                    ).fit_transform(
+                        reference_pipe.transform(args.reference),
+                        srt_pipes,
+                    )
             if best_score < 0:
                 sync_was_successful = False
             logger.info("...done")
@@ -1116,6 +1141,10 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
             "auditok",
             "subs_then_silero",
             "silero",
+            "fused",
+            "fused:weighted",
+            "fused:intersection",
+            "fused:union",
         ],
         default=None,
         help="Which voice activity detector to use for speech extraction "
@@ -1245,6 +1274,24 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically adjust quality thresholds based on video duration and speech density. "
              "Shorter videos and low speech density will use more relaxed thresholds.",
+    )
+    parser.add_argument(
+        "--preprocess-subtitles",
+        action="store_true",
+        help="Preprocess subtitles before alignment: filter non-dialogue content "
+             "(sound effects, music symbols) and merge short segments.",
+    )
+    parser.add_argument(
+        "--two-pass-align",
+        action="store_true",
+        help="Use two-pass alignment for improved accuracy. First pass finds coarse offset, "
+             "second pass refines with smaller search range.",
+    )
+    parser.add_argument(
+        "--fine-offset-seconds",
+        type=float,
+        default=5.0,
+        help="Maximum offset range for fine alignment in two-pass mode (default=5.0 seconds).",
     )
     parser.add_argument("--vlc-mode", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--gui-mode", action="store_true", help=argparse.SUPPRESS)

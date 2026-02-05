@@ -236,6 +236,30 @@ Adaptive thresholds automatically adjust based on:
 | < 30 min | 0.8× | 0.5× (max 25% of duration) | 1.2× |
 | >= 30 min | 1.0× | 1.0× | 1.0× |
 
+### Advanced Optimization Options
+
+#### Subtitle Preprocessing
+Filter non-dialogue content (sound effects, music) and merge short segments:
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --preprocess-subtitles
+~~~
+
+#### Two-Pass Alignment
+First pass finds coarse offset, second pass refines with smaller search range:
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --two-pass-align
+ffs video.mp4 -i sub.srt -o out.srt --two-pass-align --fine-offset-seconds 3
+~~~
+
+#### Fused VAD (Multi-VAD)
+Combine webrtc and silero VAD for improved speech detection:
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused:intersection  # Conservative
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused:union         # Aggressive
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused:weighted      # Default (60% silero + 40% webrtc)
+~~~
+
 Speed
 -----
 `ffsubsync` usually finishes in 20 to 30 seconds, depending on the length of
