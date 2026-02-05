@@ -185,6 +185,39 @@ If the sync still fails, consider trying one of the following similar tools:
 - [oseiskar/autosubsync](https://github.com/oseiskar/autosubsync): performs speech detection with bespoke spectrogram + logistic regression
 - [pums974/srtsync](https://github.com/pums974/srtsync): similar approach to ffsubsync (WebRTC's VAD + FFT to maximize signal cross correlation)
 
+### Quality Protection (Keep Original on Low Quality)
+
+For short videos or poor audio quality, alignment may fail and produce worse results than
+the original subtitles. Use `--skip-sync-on-low-quality` to automatically detect low-quality
+alignments and output original subtitles without modification:
+
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --skip-sync-on-low-quality
+~~~
+
+Quality is determined by three thresholds:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--min-score` | 0.0 | Minimum alignment score (negative = poor match) |
+| `--quality-max-offset-seconds` | 30.0 | Maximum allowed offset in seconds |
+| `--max-framerate-deviation` | 0.05 | Maximum framerate scale deviation from 1.0 (5%) |
+
+If any threshold is exceeded, the original subtitles are output unchanged:
+
+~~~
+# Custom thresholds
+ffs video.mp4 -i sub.srt -o out.srt --skip-sync-on-low-quality \
+    --min-score 100 \
+    --quality-max-offset-seconds 20 \
+    --max-framerate-deviation 0.03
+~~~
+
+**When to use**:
+- Short videos (< 5 minutes) where alignment data is sparse
+- Batch processing where some files may have poor audio
+- When original subtitles are already close to correct
+
 Speed
 -----
 `ffsubsync` usually finishes in 20 to 30 seconds, depending on the length of

@@ -168,40 +168,70 @@ def _make_silero_detector(
     sample_rate: int, frame_rate: int, non_speech_label: float
 ) -> Callable[[bytes], np.ndarray]:
     import torch
+    from silero_vad import load_silero_vad
 
-    window_duration = 1.0 / sample_rate  # duration in seconds
-    frames_per_window = int(window_duration * frame_rate + 0.5)
-    bytes_per_frame = 1
-
-    model, _ = torch.hub.load(
-        repo_or_dir="snakers4/silero-vad",
-        model="silero_vad",
-        force_reload=False,
-        onnx=False,
-    )
+    model = load_silero_vad()
+    
+    # Silero VAD requires specific window sizes:
+    # 512 samples for 16kHz, 256 samples for 8kHz
+    # frame_rate here is the audio sample rate (e.g., 48000)
+    silero_sample_rate = 16000
+    window_size_samples = 512  # for 16kHz
+    
+    # Calculate how many output frames we produce per input chunk
+    # sample_rate is the VAD output rate (e.g., 100 Hz)
+    # frame_rate is the audio sample rate (e.g., 48000 Hz)
+    window_duration_seconds = window_size_samples / silero_sample_rate  # ~32ms per window
+    output_frames_per_window = max(1, int(window_duration_seconds * sample_rate + 0.5))
 
     exception_logged = False
 
     def _detect(asegment) -> np.ndarray:
-        asegment = np.frombuffer(asegment, np.int16).astype(np.float32) / (1 << 15)
-        asegment = torch.FloatTensor(asegment)
+        # Convert bytes to float32 audio samples
+        audio = np.frombuffer(asegment, np.int16).astype(np.float32) / (1 << 15)
+        
+        # Resample to 16kHz if needed (silero VAD expects 16kHz)
+        if frame_rate != silero_sample_rate:
+            # Simple resampling by interpolation
+            original_length = len(audio)
+            target_length = int(original_length * silero_sample_rate / frame_rate)
+            if target_length > 0:
+                indices = np.linspace(0, original_length - 1, target_length)
+                audio = np.interp(indices, np.arange(original_length), audio)
+        
+        audio_tensor = torch.FloatTensor(audio)
+        
         media_bstring = []
-        failures = 0
-        for start in range(0, len(asegment) // bytes_per_frame, frames_per_window):
-            stop = min(start + frames_per_window, len(asegment))
+        
+        # Process audio in windows
+        for start in range(0, len(audio_tensor), window_size_samples):
+            chunk = audio_tensor[start:start + window_size_samples]
+            
+            # Skip if chunk is too short
+            if len(chunk) < window_size_samples:
+                # Pad the last chunk if needed
+                if len(chunk) > window_size_samples // 2:
+                    chunk = torch.nn.functional.pad(chunk, (0, window_size_samples - len(chunk)))
+                else:
+                    break
+            
             try:
-                speech_prob = model(
-                    asegment[start * bytes_per_frame : stop * bytes_per_frame],
-                    frame_rate,
-                ).item()
+                speech_prob = model(chunk, silero_sample_rate).item()
             except Exception:
                 nonlocal exception_logged
                 if not exception_logged:
                     exception_logged = True
                     logger.exception("exception occurred during speech detection")
                 speech_prob = 0.0
-                failures += 1
-            media_bstring.append(1.0 - (1.0 - speech_prob) * (1.0 - non_speech_label))
+            
+            # Expand to match expected output frame rate
+            prob_value = 1.0 - (1.0 - speech_prob) * (1.0 - non_speech_label)
+            for _ in range(output_frames_per_window):
+                media_bstring.append(prob_value)
+        
+        # Reset model states after processing each chunk
+        model.reset_states()
+        
         return np.array(media_bstring)
 
     return _detect

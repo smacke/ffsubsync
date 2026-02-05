@@ -13,3 +13,4 @@ tqdm
 typing_extensions
 webrtcvad;platform_system!='Windows'
 webrtcvad-wheels;platform_system=='Windows'
+silero-vad

@@ -18,6 +18,11 @@ DEFAULT_VAD: str = "subs_then_webrtc"
 DEFAULT_MAX_OFFSET_SECONDS: int = 60
 DEFAULT_APPLY_OFFSET_SECONDS: int = 0
 
+# Quality protection thresholds
+DEFAULT_MIN_SCORE: float = 0.0
+DEFAULT_QUALITY_MAX_OFFSET_SECONDS: float = 30.0
+DEFAULT_MAX_FRAMERATE_DEVIATION: float = 0.05
+
 SUBTITLE_EXTENSIONS: Tuple[str, ...] = ("srt", "ass", "ssa", "sub")
 
 # Supported remote URL protocols, easy to maintain and extend

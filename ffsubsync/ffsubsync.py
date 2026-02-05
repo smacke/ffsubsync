@@ -29,6 +29,9 @@ from ffsubsync.constants import (
     SUBTITLE_EXTENSIONS,
     REMOTE_URL_PROTOCOLS,
     is_remote_url,
+    DEFAULT_MIN_SCORE,
+    DEFAULT_QUALITY_MAX_OFFSET_SECONDS,
+    DEFAULT_MAX_FRAMERATE_DEVIATION,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
 from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
@@ -516,15 +519,41 @@ def try_sync(
             logger.info("score: %.3f", best_score)
             logger.info("offset seconds: %.3f", offset_seconds)
             logger.info("framerate scale factor: %.3f", scale_step.scale_factor)
-            output_steps: List[Tuple[str, TransformerMixin]] = [
-                ("shift", SubtitleShifter(offset_seconds))
-            ]
-            if args.merge_with_reference:
-                output_steps.append(
-                    ("merge", SubtitleMerger(reference_pipe.named_steps["parse"].subs_))
-                )
-            output_pipe = Pipeline(output_steps)
-            out_subs = output_pipe.fit_transform(scale_step.subs_)
+            
+            # Quality protection: check if alignment quality is too low
+            skip_sync_due_to_quality = False
+            quality_reasons = []
+            if getattr(args, 'skip_sync_on_low_quality', False):
+                if best_score < args.min_score:
+                    quality_reasons.append(f"score {best_score:.1f} < {args.min_score}")
+                if abs(offset_seconds) > args.quality_max_offset_seconds:
+                    quality_reasons.append(f"|offset| {abs(offset_seconds):.1f}s > {args.quality_max_offset_seconds}s")
+                framerate_deviation = abs(scale_step.scale_factor - 1.0)
+                if framerate_deviation > args.max_framerate_deviation:
+                    quality_reasons.append(f"framerate deviation {framerate_deviation:.3f} > {args.max_framerate_deviation}")
+                
+                if quality_reasons:
+                    skip_sync_due_to_quality = True
+                    logger.warning(
+                        "Low quality alignment detected, outputting original subtitles. Reasons: %s",
+                        "; ".join(quality_reasons)
+                    )
+            
+            if skip_sync_due_to_quality:
+                # Output original subtitles without modification
+                output_steps = []  # No shift, no scale
+                out_subs = scale_step.subs_.clone_props_for_subs(list(scale_step.subs_))
+                sync_was_successful = False
+            else:
+                output_steps: List[Tuple[str, TransformerMixin]] = [
+                    ("shift", SubtitleShifter(offset_seconds))
+                ]
+                if args.merge_with_reference:
+                    output_steps.append(
+                        ("merge", SubtitleMerger(reference_pipe.named_steps["parse"].subs_))
+                    )
+                output_pipe = Pipeline(output_steps)
+                out_subs = output_pipe.fit_transform(scale_step.subs_)
             if args.output_encoding != "same":
                 out_subs = out_subs.set_encoding(args.output_encoding)
             suppress_output_thresh = args.suppress_output_if_offset_less_than
@@ -1101,6 +1130,36 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         default=4,
         help="Number of parallel workers for segment extraction in --multi-segment-sync (default=4). "
              "Higher values may speed up remote URL processing but increase network load.",
+    )
+    parser.add_argument(
+        "--skip-sync-on-low-quality",
+        action="store_true",
+        help="If alignment quality is too low, output original subtitles without modification. "
+             "Quality is determined by score, offset, and framerate deviation thresholds.",
+    )
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=DEFAULT_MIN_SCORE,
+        help="Minimum alignment score threshold. If score < this value and "
+             "--skip-sync-on-low-quality is set, subtitles are not modified (default=%.1f)." 
+             % DEFAULT_MIN_SCORE,
+    )
+    parser.add_argument(
+        "--quality-max-offset-seconds",
+        type=float,
+        default=DEFAULT_QUALITY_MAX_OFFSET_SECONDS,
+        help="Maximum offset threshold for quality check. If |offset| > this value and "
+             "--skip-sync-on-low-quality is set, subtitles are not modified (default=%.1f seconds)."
+             % DEFAULT_QUALITY_MAX_OFFSET_SECONDS,
+    )
+    parser.add_argument(
+        "--max-framerate-deviation",
+        type=float,
+        default=DEFAULT_MAX_FRAMERATE_DEVIATION,
+        help="Maximum framerate scale deviation from 1.0. If |scale - 1.0| > this value and "
+             "--skip-sync-on-low-quality is set, subtitles are not modified (default=%.2f)."
+             % DEFAULT_MAX_FRAMERATE_DEVIATION,
     )
     parser.add_argument("--vlc-mode", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--gui-mode", action="store_true", help=argparse.SUPPRESS)
