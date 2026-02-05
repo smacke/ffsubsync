@@ -181,6 +181,61 @@ def get_framerate_ratios_to_try(args: argparse.Namespace) -> List[Optional[float
         return framerate_ratios
 
 
+def get_adaptive_thresholds(
+    video_duration: float,
+    args: argparse.Namespace,
+    total_speech_frames: Optional[float] = None
+) -> Dict[str, float]:
+    """Calculate adaptive quality thresholds based on video duration and speech density.
+    
+    Args:
+        video_duration: Video duration in seconds
+        args: Command line arguments containing base thresholds
+        total_speech_frames: Total speech frames detected (optional, for density adjustment)
+    
+    Returns:
+        Dictionary with adjusted thresholds: min_score, max_offset, max_framerate_dev
+    """
+    base_min_score = getattr(args, 'min_score', 0.0)
+    base_max_offset = getattr(args, 'quality_max_offset_seconds', 30.0)
+    base_max_framerate_dev = getattr(args, 'max_framerate_deviation', 0.05)
+    
+    # Duration-based adjustments
+    if video_duration < 300:  # < 5 minutes
+        score_multiplier = 0.5
+        offset_multiplier = 0.3
+        framerate_multiplier = 1.5
+    elif video_duration < 1800:  # < 30 minutes
+        score_multiplier = 0.8
+        offset_multiplier = 0.5
+        framerate_multiplier = 1.2
+    else:
+        score_multiplier = 1.0
+        offset_multiplier = 1.0
+        framerate_multiplier = 1.0
+    
+    # Calculate adjusted thresholds
+    adjusted_min_score = base_min_score * score_multiplier
+    adjusted_max_offset = min(
+        base_max_offset * offset_multiplier,
+        video_duration * 0.25  # Never exceed 25% of video duration
+    )
+    adjusted_max_framerate_dev = base_max_framerate_dev * framerate_multiplier
+    
+    # Speech density adjustment (if available)
+    if total_speech_frames is not None and video_duration > 0:
+        speech_density = total_speech_frames / (video_duration * SAMPLE_RATE)
+        if speech_density < 0.3:  # Low speech density
+            adjusted_min_score *= 0.5
+            adjusted_max_offset *= 1.5
+    
+    return {
+        'min_score': adjusted_min_score,
+        'max_offset': adjusted_max_offset,
+        'max_framerate_dev': adjusted_max_framerate_dev
+    }
+
+
 def try_multi_segment_sync(
     args: argparse.Namespace, result: Dict[str, Any]
 ) -> bool:
@@ -524,13 +579,31 @@ def try_sync(
             skip_sync_due_to_quality = False
             quality_reasons = []
             if getattr(args, 'skip_sync_on_low_quality', False):
-                if best_score < args.min_score:
-                    quality_reasons.append(f"score {best_score:.1f} < {args.min_score}")
-                if abs(offset_seconds) > args.quality_max_offset_seconds:
-                    quality_reasons.append(f"|offset| {abs(offset_seconds):.1f}s > {args.quality_max_offset_seconds}s")
+                # Get thresholds (adaptive or fixed)
+                if getattr(args, 'adaptive_thresholds', False):
+                    # Try to get video duration and speech frames for adaptive thresholds
+                    video_duration = result.get('video_duration', 0)
+                    total_speech_frames = result.get('total_speech_frames', None)
+                    thresholds = get_adaptive_thresholds(video_duration, args, total_speech_frames)
+                    min_score_thresh = thresholds['min_score']
+                    max_offset_thresh = thresholds['max_offset']
+                    max_framerate_dev_thresh = thresholds['max_framerate_dev']
+                    logger.info(
+                        "Using adaptive thresholds: min_score=%.1f, max_offset=%.1fs, max_framerate_dev=%.3f",
+                        min_score_thresh, max_offset_thresh, max_framerate_dev_thresh
+                    )
+                else:
+                    min_score_thresh = args.min_score
+                    max_offset_thresh = args.quality_max_offset_seconds
+                    max_framerate_dev_thresh = args.max_framerate_deviation
+                
+                if best_score < min_score_thresh:
+                    quality_reasons.append(f"score {best_score:.1f} < {min_score_thresh}")
+                if abs(offset_seconds) > max_offset_thresh:
+                    quality_reasons.append(f"|offset| {abs(offset_seconds):.1f}s > {max_offset_thresh}s")
                 framerate_deviation = abs(scale_step.scale_factor - 1.0)
-                if framerate_deviation > args.max_framerate_deviation:
-                    quality_reasons.append(f"framerate deviation {framerate_deviation:.3f} > {args.max_framerate_deviation}")
+                if framerate_deviation > max_framerate_dev_thresh:
+                    quality_reasons.append(f"framerate deviation {framerate_deviation:.3f} > {max_framerate_dev_thresh}")
                 
                 if quality_reasons:
                     skip_sync_due_to_quality = True
@@ -825,6 +898,12 @@ def _run_impl(args: argparse.Namespace, result: Dict[str, Any]) -> bool:
     logger.info("extracting speech segments from reference '%s'...", args.reference)
     reference_pipe.fit(args.reference)
     logger.info("...done")
+    
+    # Store video metadata for adaptive thresholds
+    if hasattr(reference_pipe[-1], 'video_speech_results_'):
+        speech_results = reference_pipe[-1].video_speech_results_
+        result['total_speech_frames'] = float(np.sum(speech_results))
+        result['video_duration'] = len(speech_results) / float(SAMPLE_RATE)
     if args.make_test_case or args.serialize_speech:
         logger.info("serializing speech...")
         np.savez_compressed(
@@ -1160,6 +1239,12 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         help="Maximum framerate scale deviation from 1.0. If |scale - 1.0| > this value and "
              "--skip-sync-on-low-quality is set, subtitles are not modified (default=%.2f)."
              % DEFAULT_MAX_FRAMERATE_DEVIATION,
+    )
+    parser.add_argument(
+        "--adaptive-thresholds",
+        action="store_true",
+        help="Automatically adjust quality thresholds based on video duration and speech density. "
+             "Shorter videos and low speech density will use more relaxed thresholds.",
     )
     parser.add_argument("--vlc-mode", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--gui-mode", action="store_true", help=argparse.SUPPRESS)

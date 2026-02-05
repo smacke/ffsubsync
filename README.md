@@ -218,6 +218,24 @@ ffs video.mp4 -i sub.srt -o out.srt --skip-sync-on-low-quality \
 - Batch processing where some files may have poor audio
 - When original subtitles are already close to correct
 
+### Adaptive Thresholds
+
+For automatic threshold adjustment based on video characteristics, use `--adaptive-thresholds`:
+
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --skip-sync-on-low-quality --adaptive-thresholds
+~~~
+
+Adaptive thresholds automatically adjust based on:
+- **Video duration**: Shorter videos use more relaxed thresholds
+- **Speech density**: Low speech density (< 30%) further relaxes thresholds
+
+| Video Duration | Score Multiplier | Offset Multiplier | Framerate Dev Multiplier |
+|----------------|------------------|-------------------|--------------------------|
+| < 5 min | 0.5× | 0.3× (max 25% of duration) | 1.5× |
+| < 30 min | 0.8× | 0.5× (max 25% of duration) | 1.2× |
+| >= 30 min | 1.0× | 1.0× | 1.0× |
+
 Speed
 -----
 `ffsubsync` usually finishes in 20 to 30 seconds, depending on the length of
