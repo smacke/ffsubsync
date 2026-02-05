@@ -65,6 +65,102 @@ ffsubsync reference.srt -i unsynchronized.srt -o synchronized.srt
 `ffsubsync` uses the file extension to decide whether to perform voice activity
 detection on the audio or to directly extract speech from an srt file.
 
+Remote URL Support
+------------------
+`ffsubsync` supports using remote URLs as video references. This allows you to
+sync subtitles directly with online video content without downloading the file first:
+
+~~~
+ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt
+~~~
+
+Supported protocols include:
+- `http://` and `https://`
+- `rtmp://` (streaming)
+- `rtsp://` (streaming)
+- `ftp://`
+
+**Note**: Remote URL processing depends on network stability. For large files or
+unstable connections, consider downloading the video first for more reliable results.
+
+### Performance Optimization for Remote URLs
+
+For faster processing of remote videos, you can use these options:
+
+~~~
+# Extract audio to temp file first (recommended for remote URLs)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --extract-audio-first
+
+# Only process first N seconds (useful for long videos)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --max-duration-seconds 600
+
+# Combine both for maximum speed
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --extract-audio-first --max-duration-seconds 600
+~~~
+
+**Speed comparison** (for a 2-hour remote video):
+| Method | Approximate Time |
+|--------|------------------|
+| Direct streaming | ~20 minutes |
+| `--extract-audio-first` | ~5-8 minutes |
+| `--max-duration-seconds 600` | ~3-5 minutes |
+| `--multi-segment-sync` | ~2-4 minutes |
+
+### Multi-Segment Sync (Recommended for Long Remote Videos)
+
+For long remote videos, multi-segment sync samples multiple short segments instead of
+processing the entire video. This is significantly faster and more robust:
+
+~~~
+# Enable multi-segment sync (default: 8 segments × 60 seconds each)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync
+
+# Customize segment count (more segments = more accurate but slower)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync --segment-count 10
+
+# Skip intro/outro (first 30s and last 60s) to avoid silent sections
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync --skip-intro-outro
+
+# Adjust parallel workers for segment extraction (default=4)
+ffs "https://example.com/video.mp4" -i sub.srt -o out.srt --multi-segment-sync --parallel-workers 6
+~~~
+
+**How it works**:
+1. Probes video duration
+2. Extracts N segments in parallel (default 4 workers) for faster download
+3. Samples N segments (default 8) distributed evenly across the video
+4. Computes alignment offset for each segment using VAD
+5. Returns weighted median offset (filters noise/outliers by score)
+
+**Options**:
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--segment-count` | 8 | Number of 60-second segments to sample |
+| `--skip-intro-outro` | off | Skip first 30s and last 60s (intro/credits) |
+| `--parallel-workers` | 4 | Parallel workers for segment extraction |
+
+**Benefits**:
+- ~80-90% faster than full video processing for 2+ hour videos
+- Parallel extraction further speeds up remote URL processing (~60% faster)
+- More robust against localized noise (ads, silent sections)
+- Automatically falls back to single-segment if video is too short
+
+### Frame Rate and Accuracy
+
+The default frame rate (48000 Hz) provides maximum accuracy. For faster processing
+with acceptable accuracy loss, you can lower it:
+
+~~~
+# Faster processing with slightly reduced accuracy
+ffs video.mp4 -i sub.srt -o out.srt --frame-rate 16000
+~~~
+
+| Frame Rate | Speed | Accuracy |
+|------------|-------|----------|
+| 48000 (default) | Baseline | Highest |
+| 16000 | ~3x faster | High (recommended minimum) |
+| 8000 | ~6x faster | Medium (may have ±0.1s error) |
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:
@@ -88,6 +184,81 @@ If the sync still fails, consider trying one of the following similar tools:
 - [tympanix/subsync](https://github.com/tympanix/subsync): neural net based approach that optimizes directly for alignment when performing speech detection
 - [oseiskar/autosubsync](https://github.com/oseiskar/autosubsync): performs speech detection with bespoke spectrogram + logistic regression
 - [pums974/srtsync](https://github.com/pums974/srtsync): similar approach to ffsubsync (WebRTC's VAD + FFT to maximize signal cross correlation)
+
+### Quality Protection (Keep Original on Low Quality)
+
+For short videos or poor audio quality, alignment may fail and produce worse results than
+the original subtitles. Use `--skip-sync-on-low-quality` to automatically detect low-quality
+alignments and output original subtitles without modification:
+
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --skip-sync-on-low-quality
+~~~
+
+Quality is determined by three thresholds:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--min-score` | 0.0 | Minimum alignment score (negative = poor match) |
+| `--quality-max-offset-seconds` | 30.0 | Maximum allowed offset in seconds |
+| `--max-framerate-deviation` | 0.05 | Maximum framerate scale deviation from 1.0 (5%) |
+
+If any threshold is exceeded, the original subtitles are output unchanged:
+
+~~~
+# Custom thresholds
+ffs video.mp4 -i sub.srt -o out.srt --skip-sync-on-low-quality \
+    --min-score 100 \
+    --quality-max-offset-seconds 20 \
+    --max-framerate-deviation 0.03
+~~~
+
+**When to use**:
+- Short videos (< 5 minutes) where alignment data is sparse
+- Batch processing where some files may have poor audio
+- When original subtitles are already close to correct
+
+### Adaptive Thresholds
+
+For automatic threshold adjustment based on video characteristics, use `--adaptive-thresholds`:
+
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --skip-sync-on-low-quality --adaptive-thresholds
+~~~
+
+Adaptive thresholds automatically adjust based on:
+- **Video duration**: Shorter videos use more relaxed thresholds
+- **Speech density**: Low speech density (< 30%) further relaxes thresholds
+
+| Video Duration | Score Multiplier | Offset Multiplier | Framerate Dev Multiplier |
+|----------------|------------------|-------------------|--------------------------|
+| < 5 min | 0.5× | 0.3× (max 25% of duration) | 1.5× |
+| < 30 min | 0.8× | 0.5× (max 25% of duration) | 1.2× |
+| >= 30 min | 1.0× | 1.0× | 1.0× |
+
+### Advanced Optimization Options
+
+#### Subtitle Preprocessing
+Filter non-dialogue content (sound effects, music) and merge short segments:
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --preprocess-subtitles
+~~~
+
+#### Two-Pass Alignment
+First pass finds coarse offset, second pass refines with smaller search range:
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --two-pass-align
+ffs video.mp4 -i sub.srt -o out.srt --two-pass-align --fine-offset-seconds 3
+~~~
+
+#### Fused VAD (Multi-VAD)
+Combine webrtc and silero VAD for improved speech detection:
+~~~
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused:intersection  # Conservative
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused:union         # Aggressive
+ffs video.mp4 -i sub.srt -o out.srt --vad=fused:weighted      # Default (60% silero + 40% webrtc)
+~~~
 
 Speed
 -----

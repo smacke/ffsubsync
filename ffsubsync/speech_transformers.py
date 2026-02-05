@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import tempfile
 from contextlib import contextmanager
 import logging
 import io
@@ -7,6 +8,7 @@ import subprocess
 import sys
 from datetime import timedelta
 from typing import cast, Callable, Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 import ffmpeg
 import numpy as np
@@ -18,6 +20,7 @@ from ffsubsync.constants import (
     DEFAULT_SCALE_FACTOR,
     DEFAULT_START_SECONDS,
     SAMPLE_RATE,
+    is_remote_url,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path, subprocess_args
 from ffsubsync.generic_subtitles import GenericSubtitle
@@ -25,6 +28,7 @@ from ffsubsync.sklearn_shim import TransformerMixin
 from ffsubsync.sklearn_shim import Pipeline
 from ffsubsync.subtitle_parser import make_subtitle_parser
 from ffsubsync.subtitle_transformers import SubtitleScaler
+from ffsubsync.subtitle_preprocessor import preprocess_subtitles
 
 
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +43,7 @@ def make_subtitle_speech_pipeline(
     start_seconds: int = DEFAULT_START_SECONDS,
     scale_factor: float = DEFAULT_SCALE_FACTOR,
     parser=None,
+    preprocess_subtitles: bool = False,
     **kwargs,
 ) -> Union[Pipeline, Callable[[float], Pipeline]]:
     if parser is None:
@@ -55,20 +60,23 @@ def make_subtitle_speech_pipeline(
     assert parser.start_seconds == start_seconds
 
     def subpipe_maker(framerate_ratio):
-        return Pipeline(
-            [
-                ("parse", parser),
-                ("scale", SubtitleScaler(framerate_ratio)),
-                (
-                    "speech_extract",
-                    SubtitleSpeechTransformer(
-                        sample_rate=SAMPLE_RATE,
-                        start_seconds=start_seconds,
-                        framerate_ratio=framerate_ratio,
-                    ),
+        steps = [
+            ("parse", parser),
+        ]
+        if preprocess_subtitles:
+            steps.append(("preprocess", SubtitlePreprocessorTransformer()))
+        steps.extend([
+            ("scale", SubtitleScaler(framerate_ratio)),
+            (
+                "speech_extract",
+                SubtitleSpeechTransformer(
+                    sample_rate=SAMPLE_RATE,
+                    start_seconds=start_seconds,
+                    framerate_ratio=framerate_ratio,
                 ),
-            ]
-        )
+            ),
+        ])
+        return Pipeline(steps)
 
     if scale_factor is None:
         return subpipe_maker
@@ -165,42 +173,111 @@ def _make_silero_detector(
     sample_rate: int, frame_rate: int, non_speech_label: float
 ) -> Callable[[bytes], np.ndarray]:
     import torch
+    from silero_vad import load_silero_vad
 
-    window_duration = 1.0 / sample_rate  # duration in seconds
-    frames_per_window = int(window_duration * frame_rate + 0.5)
-    bytes_per_frame = 1
-
-    model, _ = torch.hub.load(
-        repo_or_dir="snakers4/silero-vad",
-        model="silero_vad",
-        force_reload=False,
-        onnx=False,
-    )
+    model = load_silero_vad()
+    
+    # Silero VAD requires specific window sizes:
+    # 512 samples for 16kHz, 256 samples for 8kHz
+    # frame_rate here is the audio sample rate (e.g., 48000)
+    silero_sample_rate = 16000
+    window_size_samples = 512  # for 16kHz
+    
+    # Calculate how many output frames we produce per input chunk
+    # sample_rate is the VAD output rate (e.g., 100 Hz)
+    # frame_rate is the audio sample rate (e.g., 48000 Hz)
+    window_duration_seconds = window_size_samples / silero_sample_rate  # ~32ms per window
+    output_frames_per_window = max(1, int(window_duration_seconds * sample_rate + 0.5))
 
     exception_logged = False
 
     def _detect(asegment) -> np.ndarray:
-        asegment = np.frombuffer(asegment, np.int16).astype(np.float32) / (1 << 15)
-        asegment = torch.FloatTensor(asegment)
+        # Convert bytes to float32 audio samples
+        audio = np.frombuffer(asegment, np.int16).astype(np.float32) / (1 << 15)
+        
+        # Resample to 16kHz if needed (silero VAD expects 16kHz)
+        if frame_rate != silero_sample_rate:
+            # Simple resampling by interpolation
+            original_length = len(audio)
+            target_length = int(original_length * silero_sample_rate / frame_rate)
+            if target_length > 0:
+                indices = np.linspace(0, original_length - 1, target_length)
+                audio = np.interp(indices, np.arange(original_length), audio)
+        
+        audio_tensor = torch.FloatTensor(audio)
+        
         media_bstring = []
-        failures = 0
-        for start in range(0, len(asegment) // bytes_per_frame, frames_per_window):
-            stop = min(start + frames_per_window, len(asegment))
+        
+        # Process audio in windows
+        for start in range(0, len(audio_tensor), window_size_samples):
+            chunk = audio_tensor[start:start + window_size_samples]
+            
+            # Skip if chunk is too short
+            if len(chunk) < window_size_samples:
+                # Pad the last chunk if needed
+                if len(chunk) > window_size_samples // 2:
+                    chunk = torch.nn.functional.pad(chunk, (0, window_size_samples - len(chunk)))
+                else:
+                    break
+            
             try:
-                speech_prob = model(
-                    asegment[start * bytes_per_frame : stop * bytes_per_frame],
-                    frame_rate,
-                ).item()
+                speech_prob = model(chunk, silero_sample_rate).item()
             except Exception:
                 nonlocal exception_logged
                 if not exception_logged:
                     exception_logged = True
                     logger.exception("exception occurred during speech detection")
                 speech_prob = 0.0
-                failures += 1
-            media_bstring.append(1.0 - (1.0 - speech_prob) * (1.0 - non_speech_label))
+            
+            # Expand to match expected output frame rate
+            prob_value = 1.0 - (1.0 - speech_prob) * (1.0 - non_speech_label)
+            for _ in range(output_frames_per_window):
+                media_bstring.append(prob_value)
+        
+        # Reset model states after processing each chunk
+        model.reset_states()
+        
         return np.array(media_bstring)
 
+    return _detect
+
+
+def _make_fused_detector(
+    sample_rate: int, frame_rate: int, non_speech_label: float,
+    fusion_strategy: str = "weighted"
+) -> Callable[[bytes], np.ndarray]:
+    """Create a fused VAD detector combining webrtc and silero.
+    
+    Args:
+        sample_rate: Output sample rate (e.g., 100 Hz)
+        frame_rate: Audio sample rate (e.g., 48000 Hz)
+        non_speech_label: Label for non-speech segments
+        fusion_strategy: One of 'weighted', 'intersection', 'union'
+    """
+    webrtc_detector = _make_webrtcvad_detector(sample_rate, frame_rate, non_speech_label)
+    silero_detector = _make_silero_detector(sample_rate, frame_rate, non_speech_label)
+    
+    def _detect(asegment: bytes) -> np.ndarray:
+        webrtc_result = webrtc_detector(asegment)
+        silero_result = silero_detector(asegment)
+        
+        # Align lengths (they may differ slightly)
+        min_len = min(len(webrtc_result), len(silero_result))
+        webrtc_result = webrtc_result[:min_len]
+        silero_result = silero_result[:min_len]
+        
+        if fusion_strategy == "intersection":
+            # Conservative: only mark as speech if both agree
+            result = np.minimum(webrtc_result, silero_result)
+        elif fusion_strategy == "union":
+            # Aggressive: mark as speech if either detects
+            result = np.maximum(webrtc_result, silero_result)
+        else:  # weighted (default)
+            # Silero is generally more accurate, give it higher weight
+            result = 0.6 * silero_result + 0.4 * webrtc_result
+        
+        return result
+    
     return _detect
 
 
@@ -226,6 +303,14 @@ class ComputeSpeechFrameBoundariesMixin:
 
 
 class VideoSpeechTransformer(TransformerMixin):
+    # Default segment duration in seconds for multi-segment sync
+    SEGMENT_DURATION: int = 60
+    # Minimum score threshold to consider a segment valid
+    MIN_SEGMENT_SCORE: float = 0.3
+    # Default margin at video start/end to skip (intro/credits often have no dialogue)
+    DEFAULT_START_MARGIN: int = 30  # Skip first 30 seconds
+    DEFAULT_END_MARGIN: int = 60    # Skip last 60 seconds
+    
     def __init__(
         self,
         vad: str,
@@ -237,6 +322,11 @@ class VideoSpeechTransformer(TransformerMixin):
         ref_stream: Optional[str] = None,
         vlc_mode: bool = False,
         gui_mode: bool = False,
+        extract_audio_first: bool = False,
+        max_duration_seconds: Optional[int] = None,
+        multi_segment_sync: bool = False,
+        segment_count: int = 8,
+        skip_intro_outro: bool = False,
     ) -> None:
         super(VideoSpeechTransformer, self).__init__()
         self.vad: str = vad
@@ -248,7 +338,334 @@ class VideoSpeechTransformer(TransformerMixin):
         self.ref_stream: Optional[str] = ref_stream
         self.vlc_mode: bool = vlc_mode
         self.gui_mode: bool = gui_mode
+        self.extract_audio_first: bool = extract_audio_first
+        self.max_duration_seconds: Optional[int] = max_duration_seconds
+        self.multi_segment_sync: bool = multi_segment_sync
+        self.segment_count: int = segment_count
+        self.skip_intro_outro: bool = skip_intro_outro
         self.video_speech_results_: Optional[np.ndarray] = None
+        self._temp_audio_file: Optional[str] = None
+        # Multi-segment sync results
+        self.segment_results_: Optional[List[Dict]] = None
+
+    def _extract_audio_to_temp(self, url: str) -> str:
+        """Extract audio from remote URL to local temp file."""
+        # Determine audio extension from URL or use default
+        parsed = urlparse(url)
+        ext = os.path.splitext(parsed.path)[1] or '.m4a'
+        if ext not in ['.m4a', '.aac', '.mp3', '.wav', '.ogg']:
+            ext = '.m4a'
+        
+        # Create temp file
+        fd, temp_path = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        
+        logger.info("Extracting audio from remote URL to temp file...")
+        
+        # Get total duration first for progress bar and smart duration limit
+        total_duration = None
+        effective_max_duration = self.max_duration_seconds
+        try:
+            total_duration = float(
+                ffmpeg.probe(
+                    url,
+                    cmd=ffmpeg_bin_path(
+                        "ffprobe", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+                    ),
+                )["format"]["duration"]
+            )
+            # Smart adjustment: if max_duration_seconds exceeds video duration, use actual duration
+            if self.max_duration_seconds and total_duration:
+                if self.max_duration_seconds > total_duration:
+                    logger.info(
+                        "max_duration_seconds (%d) exceeds video duration (%.1f), using actual duration",
+                        self.max_duration_seconds, total_duration
+                    )
+                    effective_max_duration = int(total_duration)
+                total_duration = min(total_duration, self.max_duration_seconds)
+        except Exception:
+            pass
+        
+        ffmpeg_args = [
+            ffmpeg_bin_path(
+                "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+            ),
+            "-loglevel", "info",
+            "-stats",
+            "-i", url,
+            "-vn",  # No video
+            "-acodec", "copy",  # Copy audio codec (fast)
+        ]
+        if effective_max_duration:
+            ffmpeg_args.extend(["-t", str(effective_max_duration)])
+        ffmpeg_args.extend(["-y", temp_path])
+        
+        try:
+            process = subprocess.Popen(
+                ffmpeg_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            
+            # Use tqdm for progress display (consistent with project style)
+            import select
+            with tqdm.tqdm(
+                total=total_duration,
+                unit="s",
+                desc="Extracting audio",
+                disable=self.vlc_mode
+            ) as pbar:
+                current_time = 0.0
+                # Timeout for reading stderr to prevent blocking
+                read_timeout = 30.0  # seconds
+                last_activity = time.time()
+                
+                while True:
+                    # Check if process has finished
+                    if process.poll() is not None:
+                        # Read any remaining output
+                        remaining = process.stderr.read()
+                        if remaining and "time=" in remaining:
+                            try:
+                                time_str = remaining.split("time=")[-1].split()[0]
+                                parts = time_str.split(":")
+                                new_time = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                                if new_time > current_time:
+                                    pbar.update(new_time - current_time)
+                            except (IndexError, ValueError):
+                                pass
+                        break
+                    
+                    # Use select to avoid blocking (Unix only, fallback for Windows)
+                    try:
+                        import sys
+                        if sys.platform != 'win32':
+                            ready, _, _ = select.select([process.stderr], [], [], 1.0)
+                            if not ready:
+                                # Check for timeout
+                                if time.time() - last_activity > read_timeout:
+                                    logger.warning("Audio extraction appears stalled, continuing...")
+                                    break
+                                continue
+                        line = process.stderr.readline()
+                    except (OSError, ValueError):
+                        # Fallback: direct read with timeout check
+                        line = process.stderr.readline()
+                    
+                    if line:
+                        last_activity = time.time()
+                        if "time=" in line:
+                            # Parse time from ffmpeg output (format: time=HH:MM:SS.xx)
+                            try:
+                                time_str = line.split("time=")[1].split()[0]
+                                parts = time_str.split(":")
+                                new_time = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                                if new_time > current_time:
+                                    pbar.update(new_time - current_time)
+                                    current_time = new_time
+                            except (IndexError, ValueError):
+                                pass
+            
+            returncode = process.wait(timeout=60)
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, ffmpeg_args)
+            
+            logger.info("...audio extraction complete: %s", temp_path)
+            self._temp_audio_file = temp_path
+            return temp_path
+        except subprocess.CalledProcessError as e:
+            # Cleanup on failure
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            logger.warning("Audio extraction failed, falling back to direct streaming: %s", e)
+            raise
+
+    def _cleanup_temp_file(self) -> None:
+        """Clean up temporary audio file if exists."""
+        if self._temp_audio_file and os.path.exists(self._temp_audio_file):
+            try:
+                os.unlink(self._temp_audio_file)
+                logger.info("Cleaned up temp file: %s", self._temp_audio_file)
+            except Exception as e:
+                logger.warning("Failed to cleanup temp file: %s", e)
+            self._temp_audio_file = None
+
+    def _calculate_segment_positions(self, total_duration: float) -> List[Dict]:
+        """Calculate segment start positions distributed across the video.
+        
+        If skip_intro_outro is enabled, applies start/end margins to skip 
+        intro/credits which often lack dialogue.
+        
+        Args:
+            total_duration: Total video duration in seconds.
+            
+        Returns:
+            List of dicts with 'start', 'duration', and 'index' keys.
+        """
+        segment_duration = self.SEGMENT_DURATION
+        num_segments = self.segment_count
+        
+        # Apply margins only if skip_intro_outro is enabled
+        if self.skip_intro_outro:
+            start_margin = self.DEFAULT_START_MARGIN
+            end_margin = self.DEFAULT_END_MARGIN
+        else:
+            start_margin = 0
+            end_margin = 0
+        
+        # Calculate effective range after applying margins
+        effective_start = start_margin
+        effective_end = total_duration - end_margin
+        effective_duration = effective_end - effective_start
+        
+        # Validate margins don't exceed video duration
+        if effective_duration <= 0:
+            # Margins too large for this video, reduce or disable them
+            logger.warning(
+                "Start margin (%ds) + end margin (%ds) exceeds video duration (%.1fs), reducing margins",
+                start_margin, end_margin, total_duration
+            )
+            # Try to keep some margin if possible
+            if total_duration > segment_duration * 2:
+                # Use 10% of duration as margin on each side
+                start_margin = int(total_duration * 0.1)
+                end_margin = int(total_duration * 0.1)
+                effective_start = start_margin
+                effective_end = total_duration - end_margin
+                effective_duration = effective_end - effective_start
+            else:
+                # Video too short for margins, use full duration
+                start_margin = 0
+                end_margin = 0
+                effective_start = 0
+                effective_end = total_duration
+                effective_duration = total_duration
+        
+        logger.debug(
+            "Segment calculation: total=%.1fs, margins=[%d, %d], effective=[%d, %.1f] (%.1fs)",
+            total_duration, start_margin, end_margin, effective_start, effective_end, effective_duration
+        )
+        
+        # Check if video is too short for multi-segment sync
+        if effective_duration < segment_duration * 2:
+            # Video too short, use single segment in the middle
+            logger.warning(
+                "Effective duration (%.1f) too short for multi-segment sync, using single segment",
+                effective_duration
+            )
+            # Determine actual segment duration (may be shorter than default)
+            actual_segment_duration = min(segment_duration, effective_duration)
+            if actual_segment_duration < 10:
+                # Segment too short for reliable VAD analysis
+                logger.warning(
+                    "Segment duration (%.1f) too short for reliable analysis, using full video duration",
+                    actual_segment_duration
+                )
+                actual_segment_duration = min(segment_duration, total_duration)
+                center_start = max(0, (total_duration - actual_segment_duration) / 2)
+            else:
+                # Place single segment in the middle of effective range
+                center_start = effective_start + max(0, (effective_duration - actual_segment_duration) / 2)
+            
+            # Ensure we don't exceed bounds
+            center_start = max(0, min(center_start, total_duration - actual_segment_duration))
+            return [{'start': int(center_start), 'duration': int(actual_segment_duration), 'index': 0}]
+        
+        # Adjust segment count if effective duration is too short
+        min_duration_needed = num_segments * segment_duration
+        if effective_duration < min_duration_needed:
+            num_segments = max(2, int(effective_duration / segment_duration))
+            logger.info(
+                "Adjusted segment count from %d to %d for effective duration %.1f",
+                self.segment_count, num_segments, effective_duration
+            )
+        
+        # Distribute segments evenly across the effective range
+        # Calculate interval between segment start positions
+        usable_range = effective_duration - segment_duration
+        if num_segments == 1:
+            interval = 0
+        else:
+            interval = usable_range / (num_segments - 1)
+        
+        segments = []
+        for i in range(num_segments):
+            # Calculate start position within effective range
+            start = effective_start + int(i * interval)
+            
+            # Boundary check: ensure segment doesn't exceed video end
+            if start + segment_duration > total_duration:
+                start = max(0, int(total_duration - segment_duration))
+                logger.debug("Segment %d adjusted to %d to avoid exceeding video end", i, start)
+            
+            # Boundary check: ensure start is not negative
+            if start < 0:
+                start = 0
+                logger.debug("Segment %d adjusted to 0 to avoid negative start", i)
+            
+            segments.append({
+                'start': start,
+                'duration': segment_duration,
+                'index': i
+            })
+        
+        logger.info(
+            "Calculated %d segments with margins [%d, %d]: %s", 
+            len(segments), start_margin, end_margin,
+            [(s['start'], s['start'] + s['duration']) for s in segments]
+        )
+        return segments
+
+    def _extract_segment_audio(self, url: str, start: int, duration: int) -> Optional[str]:
+        """Extract a specific segment of audio from URL to temp file.
+        
+        Args:
+            url: Remote URL or local file path.
+            start: Start time in seconds.
+            duration: Duration in seconds.
+            
+        Returns:
+            Path to temp audio file, or None if extraction failed.
+        """
+        fd, temp_path = tempfile.mkstemp(suffix='.wav')
+        os.close(fd)
+        
+        ffmpeg_args = [
+            ffmpeg_bin_path("ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path),
+            "-loglevel", "warning",
+            "-ss", str(start),
+            "-i", url,
+            "-t", str(duration),
+            "-vn",
+            "-acodec", "pcm_s16le",
+            "-ar", str(self.frame_rate),
+            "-ac", "1",
+            "-y", temp_path
+        ]
+        
+        try:
+            result = subprocess.run(ffmpeg_args, capture_output=True, timeout=120)
+            if result.returncode != 0:
+                logger.warning("Failed to extract segment at %ds: %s", start, result.stderr.decode()[:200])
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                return None
+            return temp_path
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout extracting segment at %ds", start)
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            return None
+        except Exception as e:
+            logger.warning("Error extracting segment at %ds: %s", start, e)
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            return None
+
+    def __del__(self):
+        """Destructor to ensure temp file cleanup."""
+        self._cleanup_temp_file()
 
     def try_fit_using_embedded_subs(self, fname: str) -> None:
         embedded_subs = []
@@ -302,6 +719,23 @@ class VideoSpeechTransformer(TransformerMixin):
         self.video_speech_results_ = subs_to_use.subtitle_speech_results_
 
     def fit(self, fname: str, *_) -> "VideoSpeechTransformer":
+        # For remote URLs with extract_audio_first, extract audio to temp file
+        original_fname = fname
+        if self.extract_audio_first and is_remote_url(fname):
+            try:
+                fname = self._extract_audio_to_temp(fname)
+            except Exception as e:
+                logger.warning("Failed to extract audio, using direct streaming: %s", e)
+                fname = original_fname
+        
+        try:
+            return self._fit_impl(fname)
+        finally:
+            # Clean up temp file after processing
+            self._cleanup_temp_file()
+
+    def _fit_impl(self, fname: str) -> "VideoSpeechTransformer":
+        """Internal implementation of fit method."""
         if "subs" in self.vad and (
             self.ref_stream is None or self.ref_stream.startswith("0:s:")
         ):
@@ -312,6 +746,8 @@ class VideoSpeechTransformer(TransformerMixin):
                 return self
             except Exception as e:
                 logger.info(e)
+        # Get total duration and apply smart max_duration_seconds adjustment
+        effective_max_duration = self.max_duration_seconds
         try:
             total_duration = (
                 float(
@@ -326,6 +762,16 @@ class VideoSpeechTransformer(TransformerMixin):
                 )
                 - self.start_seconds
             )
+            # Smart adjustment: if max_duration_seconds exceeds video duration, use actual duration
+            if self.max_duration_seconds and total_duration:
+                if self.max_duration_seconds > total_duration:
+                    logger.info(
+                        "max_duration_seconds (%d) exceeds video duration (%.1f), using actual duration",
+                        self.max_duration_seconds, total_duration
+                    )
+                    effective_max_duration = int(total_duration)
+                else:
+                    total_duration = min(total_duration, self.max_duration_seconds)
         except Exception as e:
             logger.warning(e)
             total_duration = None
@@ -340,6 +786,16 @@ class VideoSpeechTransformer(TransformerMixin):
         elif "silero" in self.vad:
             detector = _make_silero_detector(
                 self.sample_rate, self.frame_rate, self._non_speech_label
+            )
+        elif "fused" in self.vad:
+            # Extract fusion strategy from vad string (e.g., "fused:weighted", "fused:intersection")
+            if ":" in self.vad:
+                fusion_strategy = self.vad.split(":")[1]
+            else:
+                fusion_strategy = "weighted"
+            detector = _make_fused_detector(
+                self.sample_rate, self.frame_rate, self._non_speech_label,
+                fusion_strategy=fusion_strategy
             )
         else:
             raise ValueError("unknown vad: %s" % self.vad)
@@ -357,6 +813,10 @@ class VideoSpeechTransformer(TransformerMixin):
                 ]
             )
         ffmpeg_args.extend(["-loglevel", "fatal", "-nostdin", "-i", fname])
+        # Add duration limit if specified (for faster processing)
+        if effective_max_duration and not self._temp_audio_file:
+            # Only add -t if not using pre-extracted audio (which already has duration limit)
+            ffmpeg_args.extend(["-t", str(effective_max_duration)])
         if self.ref_stream is not None and self.ref_stream.startswith("0:a:"):
             ffmpeg_args.extend(["-map", self.ref_stream])
         ffmpeg_args.extend(
@@ -465,6 +925,52 @@ def _is_metadata(content: str, is_beginning_or_end: bool) -> bool:
         if " - " in content:
             return True
     return False
+
+
+class SubtitlePreprocessorTransformer(TransformerMixin):
+    """Transformer to preprocess subtitles before alignment."""
+    
+    def __init__(
+        self,
+        filter_non_dialogue: bool = True,
+        merge_short: bool = True,
+        min_duration: float = 0.3,
+        max_gap: float = 0.3,
+        min_keep_ratio: float = 0.3
+    ) -> None:
+        super(SubtitlePreprocessorTransformer, self).__init__()
+        self.filter_non_dialogue = filter_non_dialogue
+        self.merge_short = merge_short
+        self.min_duration = min_duration
+        self.max_gap = max_gap
+        self.min_keep_ratio = min_keep_ratio
+        self.subs_ = None
+    
+    def fit(self, subs, *_) -> "SubtitlePreprocessorTransformer":
+        # subs can be GenericSubtitlesFile or list of GenericSubtitle
+        if hasattr(subs, '__iter__') and not isinstance(subs, (str, bytes)):
+            subs_list = list(subs)
+        else:
+            subs_list = subs
+        
+        processed = preprocess_subtitles(
+            subs_list,
+            filter_non_dialogue=self.filter_non_dialogue,
+            merge_short=self.merge_short,
+            min_duration=self.min_duration,
+            max_gap=self.max_gap,
+            min_keep_ratio=self.min_keep_ratio
+        )
+        
+        # Preserve GenericSubtitlesFile wrapper if present
+        if hasattr(subs, 'clone_props_for_subs'):
+            self.subs_ = subs.clone_props_for_subs(processed)
+        else:
+            self.subs_ = processed
+        return self
+    
+    def transform(self, *_):
+        return self.subs_
 
 
 class SubtitleSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
