@@ -568,6 +568,84 @@ def find_pgs_stream(
     return None
 
 
+def _get_pgs_timings_via_ffprobe(
+    fname: str,
+    stream: str,
+    ffmpeg_path: Optional[str] = None,
+    gui_mode: bool = False,
+) -> Optional[List[Tuple[float, float]]]:
+    """Fast path: read PGS timings from MKV container metadata using ffprobe.
+
+    MKV stores per-packet PTS and duration for subtitle streams, so we can
+    get start/end timestamps without extracting or parsing the raw SUP binary.
+    Show events are large packets with a numeric ``duration_time``; clear events
+    are tiny (~30-byte) packets with ``duration_time=N/A``.
+
+    Returns a list of ``(start_seconds, end_seconds)`` tuples, or ``None`` if
+    ffprobe fails or the durations are not usable (fall back to SUP parsing).
+    """
+    ffprobe_cmd = ffmpeg_bin_path(
+        "ffprobe", gui_mode, ffmpeg_resources_path=ffmpeg_path
+    )
+    # ffprobe -select_streams does not accept the "0:" input-index prefix;
+    # strip it so "0:s:0" → "s:0" and "0:3" → "3".
+    probe_stream = stream[2:] if stream.startswith("0:") else stream
+    args = [
+        ffprobe_cmd,
+        "-v",
+        "quiet",
+        "-show_packets",
+        "-select_streams",
+        probe_stream,
+        "-show_entries",
+        "packet=pts_time,duration_time,size",
+        fname,
+    ]
+    process = subprocess.Popen(args, **subprocess_args(include_stdout=True))
+    stdout, _ = process.communicate()
+    if process.returncode != 0 or not stdout:
+        return None
+
+    results: List[Tuple[float, float]] = []
+    pts_time: Optional[float] = None
+    duration_time: Optional[float] = None
+    size: Optional[int] = None
+
+    for raw_line in stdout.decode("utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if line == "[PACKET]":
+            pts_time = duration_time = size = None
+        elif line == "[/PACKET]":
+            if (
+                pts_time is not None
+                and duration_time is not None
+                and size is not None
+                and size > 50  # skip clear events (~30 bytes)
+            ):
+                results.append((pts_time, pts_time + duration_time))
+        elif line.startswith("pts_time="):
+            try:
+                pts_time = float(line.split("=", 1)[1])
+            except ValueError:
+                pass
+        elif line.startswith("duration_time="):
+            val = line.split("=", 1)[1]
+            if val != "N/A":
+                try:
+                    duration_time = float(val)
+                except ValueError:
+                    pass
+        elif line.startswith("size="):
+            try:
+                size = int(line.split("=", 1)[1])
+            except ValueError:
+                pass
+
+    if not results:
+        return None
+    return results
+
+
 def _parse_pgs_timings(data: bytes) -> List[Tuple[float, float]]:
     """Parse raw PGS (Presentation Graphic Stream / SUP) binary data.
 
@@ -692,37 +770,43 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
             if not stream.startswith("0:"):
                 stream = "0:" + stream
 
-        ffmpeg_args = [
-            ffmpeg_bin_path(
-                "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
-            ),
-            "-loglevel",
-            "fatal",
-            "-nostdin",
-            "-i",
-            fname,
-            "-map",
-            stream,
-            "-c:s",
-            "copy",
-            "-f",
-            "sup",
-            "-",
-        ]
-
-        logger.info("extracting PGS subtitle stream %s from %s...", stream, fname)
-        process = subprocess.Popen(ffmpeg_args, **subprocess_args(include_stdout=True))
-        pgs_data, _ = process.communicate()
-
-        if process.returncode != 0 or not pgs_data:
-            raise ValueError(
-                "Failed to extract PGS stream {} from {}. "
-                "Make sure the stream exists and is an hdmv_pgs_subtitle track "
-                "(check with: ffprobe -show_streams {}).".format(stream, fname, fname)
+        logger.info("reading PGS timings for stream %s from %s...", stream, fname)
+        timings = _get_pgs_timings_via_ffprobe(
+            fname, stream, self.ffmpeg_path, self.gui_mode
+        )
+        if timings is None:
+            # Fallback: extract raw SUP stream and parse binary
+            logger.info("ffprobe fast path unavailable, extracting raw PGS stream...")
+            ffmpeg_args = [
+                ffmpeg_bin_path(
+                    "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+                ),
+                "-loglevel",
+                "fatal",
+                "-nostdin",
+                "-i",
+                fname,
+                "-map",
+                stream,
+                "-c:s",
+                "copy",
+                "-f",
+                "sup",
+                "-",
+            ]
+            process = subprocess.Popen(
+                ffmpeg_args, **subprocess_args(include_stdout=True)
             )
-
-        logger.info("...done; parsing PGS timings...")
-        timings = _parse_pgs_timings(pgs_data)
+            pgs_data, _ = process.communicate()
+            if process.returncode != 0 or not pgs_data:
+                raise ValueError(
+                    "Failed to extract PGS stream {} from {}. "
+                    "Make sure the stream exists and is an hdmv_pgs_subtitle track "
+                    "(check with: ffprobe -show_streams {}).".format(
+                        stream, fname, fname
+                    )
+                )
+            timings = _parse_pgs_timings(pgs_data)
 
         if not timings:
             raise ValueError(
