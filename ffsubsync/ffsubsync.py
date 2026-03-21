@@ -30,6 +30,7 @@ from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
 from ffsubsync.speech_transformers import (
     VideoSpeechTransformer,
     DeserializeSpeechTransformer,
+    PGSSpeechTransformer,
     make_subtitle_speech_pipeline,
 )
 from ffsubsync.subtitle_parser import make_subtitle_parser
@@ -220,6 +221,24 @@ def try_sync(
 
 
 def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
+    pgs_stream = getattr(args, "pgs_ref_stream", None)
+    if pgs_stream is not None:
+        if not pgs_stream.startswith("0:"):
+            pgs_stream = "0:" + pgs_stream
+        return Pipeline(
+            [
+                (
+                    "speech_extract",
+                    PGSSpeechTransformer(
+                        sample_rate=SAMPLE_RATE,
+                        start_seconds=args.start_seconds,
+                        ffmpeg_path=args.ffmpeg_path,
+                        ref_stream=pgs_stream,
+                        gui_mode=args.gui_mode,
+                    ),
+                ),
+            ]
+        )
     ref_format = _ref_format(args.reference)
     if ref_format in SUBTITLE_EXTENSIONS:
         if args.vad is not None:
@@ -451,7 +470,7 @@ def _run_impl(args: argparse.Namespace, result: Dict[str, Any]) -> bool:
 
 
 def validate_and_transform_args(
-    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace]
+    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace],
 ) -> Optional[argparse.Namespace]:
     if isinstance(parser_or_args, argparse.Namespace):
         parser = None
@@ -484,7 +503,7 @@ def validate_and_transform_args(
 
 
 def run(
-    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace]
+    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace],
 ) -> Dict[str, Any]:
     sync_was_successful = False
     result = {
@@ -554,6 +573,18 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
             "uses the first subtitle track; 0:a:3 would use the third audio track. "
             "You can also drop the leading `0:`; i.e. use s:0 or a:3, respectively. "
             "Example: `ffs ref.mkv -i in.srt -o out.srt --reference-stream s:2`"
+        ),
+    )
+    parser.add_argument(
+        "--pgs-ref-stream",
+        "--pgsstream",
+        default=None,
+        help=(
+            "Extract PGS (Presentation Graphic Stream) image-based subtitles from "
+            "the specified stream in the reference MKV and use their on-screen "
+            "timings as sync reference instead of audio voice-activity detection. "
+            "Formatted like ffmpeg stream specifiers (leading `0:` is optional). "
+            "Example: `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream s:0`"
         ),
     )
 

@@ -6,7 +6,7 @@ import io
 import subprocess
 import sys
 from datetime import timedelta
-from typing import cast, Callable, Dict, List, Optional, Union
+from typing import cast, Callable, Dict, List, Optional, Tuple, Union
 
 import ffmpeg
 import numpy as np
@@ -531,3 +531,158 @@ class DeserializeSpeechTransformer(TransformerMixin):
     def transform(self, *_) -> np.ndarray:
         assert self.deserialized_speech_results_ is not None
         return self.deserialized_speech_results_
+
+
+def _parse_pgs_timings(data: bytes) -> List[Tuple[float, float]]:
+    """Parse raw PGS (Presentation Graphic Stream / SUP) binary data.
+
+    Each PGS display set is introduced by a Presentation Composition Segment
+    (PCS, type 0x16).  The PCS carries the number of composition objects: > 0
+    means a subtitle image is now on-screen, 0 means the screen is being
+    cleared.  We walk through all PCS segments and pair "show" and "clear"
+    events to produce (start_seconds, end_seconds) intervals.
+    """
+    import struct
+
+    PGS_MAGIC = b"\x50\x47"  # "PG" – PGS packet sync word
+    SEG_PCS = 0x16
+    # PCS layout after the 13-byte header:
+    #   video_w(2) + video_h(2) + frame_rate(1) + comp_number(2) +
+    #   comp_state(1) + palette_update_flag(1) + palette_id(1) + num_objects(1)
+    PCS_PALETTE_UPDATE_OFFSET = 8  # offset of palette_update_flag inside PCS data
+    PCS_NUM_OBJECTS_OFFSET = 10  # offset of num_comp_objects inside PCS data
+    PCS_MIN_LENGTH = 11  # minimum PCS data length to read the above
+
+    HEADER_SIZE = 13  # 2 magic + 4 PTS + 4 DTS + 1 type + 2 length
+
+    results: List[Tuple[float, float]] = []
+    current_start: Optional[float] = None
+    pos = 0
+
+    while pos + HEADER_SIZE <= len(data):
+        if data[pos : pos + 2] != PGS_MAGIC:
+            # lost sync – try to find the next magic bytes
+            next_magic = data.find(PGS_MAGIC, pos + 1)
+            if next_magic == -1:
+                break
+            pos = next_magic
+            continue
+
+        # PTS is in 90 kHz ticks
+        pts: float = struct.unpack_from(">I", data, pos + 2)[0] / 90000.0
+        seg_type: int = data[pos + 10]
+        seg_length: int = struct.unpack_from(">H", data, pos + 11)[0]
+
+        if seg_type == SEG_PCS and seg_length >= PCS_MIN_LENGTH:
+            pcs_start = pos + HEADER_SIZE
+            palette_update_flag: int = data[pcs_start + PCS_PALETTE_UPDATE_OFFSET]
+            num_objects: int = data[pcs_start + PCS_NUM_OBJECTS_OFFSET]
+
+            if palette_update_flag == 0x80:
+                # palette-only update – displayed subtitle is unchanged, skip
+                pass
+            elif num_objects > 0:
+                current_start = pts
+            elif current_start is not None:
+                results.append((current_start, pts))
+                current_start = None
+
+        pos += HEADER_SIZE + seg_length
+
+    return results
+
+
+class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
+    """Use PGS (Presentation Graphic Stream) subtitle timings as a sync reference.
+
+    PGS subtitles are bitmap-based (e.g. Blu-ray) and cannot be converted to
+    text by ffmpeg.  This transformer extracts the raw SUP stream from the
+    video file, parses the on-screen / off-screen timestamps from the binary
+    Presentation Composition Segments, and builds the same kind of sparse
+    binary signal that :class:`SubtitleSpeechTransformer` produces for text
+    subtitles.  The resulting signal can then be aligned against the input
+    subtitle file in the normal ffsubsync pipeline.
+    """
+
+    def __init__(
+        self,
+        sample_rate: int,
+        start_seconds: int = 0,
+        ffmpeg_path: Optional[str] = None,
+        ref_stream: Optional[str] = None,
+        gui_mode: bool = False,
+    ) -> None:
+        super(PGSSpeechTransformer, self).__init__()
+        self.sample_rate: int = sample_rate
+        self.start_seconds: int = start_seconds
+        self.ffmpeg_path: Optional[str] = ffmpeg_path
+        self.ref_stream: Optional[str] = ref_stream
+        self.gui_mode: bool = gui_mode
+        self.pgs_speech_results_: Optional[np.ndarray] = None
+
+    def fit(self, fname: str, *_) -> "PGSSpeechTransformer":
+        stream = self.ref_stream if self.ref_stream is not None else "0:s:0"
+        if not stream.startswith("0:"):
+            stream = "0:" + stream
+
+        ffmpeg_args = [
+            ffmpeg_bin_path(
+                "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+            ),
+            "-loglevel",
+            "fatal",
+            "-nostdin",
+            "-i",
+            fname,
+            "-map",
+            stream,
+            "-c:s",
+            "copy",
+            "-f",
+            "sup",
+            "-",
+        ]
+
+        logger.info("extracting PGS subtitle stream %s from %s...", stream, fname)
+        process = subprocess.Popen(ffmpeg_args, **subprocess_args(include_stdout=True))
+        pgs_data, _ = process.communicate()
+
+        if process.returncode != 0 or not pgs_data:
+            raise ValueError(
+                "Failed to extract PGS stream {} from {}. "
+                "Make sure the stream exists and is an hdmv_pgs_subtitle track "
+                "(check with: ffprobe -show_streams {}).".format(stream, fname, fname)
+            )
+
+        logger.info("...done; parsing PGS timings...")
+        timings = _parse_pgs_timings(pgs_data)
+
+        if not timings:
+            raise ValueError(
+                "No subtitle timings found in PGS stream {}.".format(stream)
+            )
+
+        logger.info("found %d PGS subtitle segments", len(timings))
+
+        max_time = max(end for _, end in timings)
+        num_samples = int(max_time * self.sample_rate) + 2
+        samples = np.zeros(num_samples, dtype=float)
+
+        for start, end in timings:
+            start_sample = int(round((start - self.start_seconds) * self.sample_rate))
+            end_sample = int(round((end - self.start_seconds) * self.sample_rate))
+            start_sample = max(start_sample, 0)
+            end_sample = min(end_sample, num_samples)
+            if start_sample < end_sample:
+                samples[start_sample:end_sample] = 1.0
+
+        self.pgs_speech_results_ = samples
+        self.fit_boundaries(self.pgs_speech_results_)
+        logger.info(
+            "total PGS subtitle frames: %d", int(np.sum(self.pgs_speech_results_))
+        )
+        return self
+
+    def transform(self, *_) -> np.ndarray:
+        assert self.pgs_speech_results_ is not None
+        return self.pgs_speech_results_
