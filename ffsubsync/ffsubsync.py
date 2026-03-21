@@ -150,8 +150,10 @@ def try_sync(
                     continue
                 else:
                     srt_pipe.fit(srtin)
-            if not skip_infer_framerate_ratio and hasattr(
-                reference_pipe[-1], "num_frames"
+            if (
+                not skip_infer_framerate_ratio
+                and hasattr(reference_pipe[-1], "num_frames")
+                and reference_pipe[-1].num_frames is not None
             ):
                 inferred_framerate_ratio_from_length = (
                     float(reference_pipe[-1].num_frames)
