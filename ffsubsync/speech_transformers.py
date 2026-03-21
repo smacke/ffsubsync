@@ -571,24 +571,37 @@ def find_pgs_stream(
 def _parse_pgs_timings(data: bytes) -> List[Tuple[float, float]]:
     """Parse raw PGS (Presentation Graphic Stream / SUP) binary data.
 
-    Each PGS display set is introduced by a Presentation Composition Segment
-    (PCS, type 0x16).  The PCS carries the number of composition objects: > 0
-    means a subtitle image is now on-screen, 0 means the screen is being
-    cleared.  We walk through all PCS segments and pair "show" and "clear"
-    events to produce (start_seconds, end_seconds) intervals.
+    PGS packet header (13 bytes):
+      0-1  : "PG" magic (0x50 0x47)
+      2-5  : PTS  – unsigned 32-bit big-endian, 90 kHz ticks
+      6-9  : DTS  – unsigned 32-bit big-endian (ignored here)
+      10   : segment type (0x16 = PCS, 0x14 = PDS, 0x15 = ODS, 0x17 = WDS, 0x80 = END)
+      11-12: segment data length, big-endian
+
+    PCS data layout (offsets from byte 13):
+      0-1  : video width
+      2-3  : video height
+      4    : frame rate byte
+      5-6  : composition number
+      7    : composition state  (0x00=Normal, 0x40=Acquisition, 0x80=Epoch Start)
+      8    : palette update flag  (0x80 = palette-only, subtitle unchanged)
+      9    : palette ID
+      10   : number of composition objects
+
+    Logic:
+      - Palette-update-only PCS → skip (existing subtitle is unchanged).
+      - Any other PCS → close any currently-open subtitle first (handles
+        both explicit clears and back-to-back / epoch-start transitions),
+        then open a new one if num_objects > 0.
     """
     import struct
 
-    PGS_MAGIC = b"\x50\x47"  # "PG" – PGS packet sync word
+    PGS_MAGIC = b"\x50\x47"  # "PG"
     SEG_PCS = 0x16
-    # PCS layout after the 13-byte header:
-    #   video_w(2) + video_h(2) + frame_rate(1) + comp_number(2) +
-    #   comp_state(1) + palette_update_flag(1) + palette_id(1) + num_objects(1)
-    PCS_PALETTE_UPDATE_OFFSET = 8  # offset of palette_update_flag inside PCS data
-    PCS_NUM_OBJECTS_OFFSET = 10  # offset of num_comp_objects inside PCS data
-    PCS_MIN_LENGTH = 11  # minimum PCS data length to read the above
-
-    HEADER_SIZE = 13  # 2 magic + 4 PTS + 4 DTS + 1 type + 2 length
+    PCS_PALETTE_UPDATE_OFFSET = 8
+    PCS_NUM_OBJECTS_OFFSET = 10
+    PCS_MIN_LENGTH = 11
+    HEADER_SIZE = 13
 
     results: List[Tuple[float, float]] = []
     current_start: Optional[float] = None
@@ -596,14 +609,12 @@ def _parse_pgs_timings(data: bytes) -> List[Tuple[float, float]]:
 
     while pos + HEADER_SIZE <= len(data):
         if data[pos : pos + 2] != PGS_MAGIC:
-            # lost sync – try to find the next magic bytes
             next_magic = data.find(PGS_MAGIC, pos + 1)
             if next_magic == -1:
                 break
             pos = next_magic
             continue
 
-        # PTS is in 90 kHz ticks
         pts: float = struct.unpack_from(">I", data, pos + 2)[0] / 90000.0
         seg_type: int = data[pos + 10]
         seg_length: int = struct.unpack_from(">H", data, pos + 11)[0]
@@ -614,13 +625,19 @@ def _parse_pgs_timings(data: bytes) -> List[Tuple[float, float]]:
             num_objects: int = data[pcs_start + PCS_NUM_OBJECTS_OFFSET]
 
             if palette_update_flag == 0x80:
-                # palette-only update – displayed subtitle is unchanged, skip
+                # Palette-only update: subtitle image unchanged, skip entirely.
                 pass
-            elif num_objects > 0:
-                current_start = pts
-            elif current_start is not None:
-                results.append((current_start, pts))
-                current_start = None
+            else:
+                # Any other PCS closes the currently-displayed subtitle (if any).
+                # This correctly handles:
+                #   - explicit clear (num_objects=0 after a subtitle)
+                #   - back-to-back subtitles (num_objects>0 replaces previous)
+                #   - epoch start (composition_state=0x80, implicit clear)
+                if current_start is not None:
+                    results.append((current_start, pts))
+                    current_start = None
+                if num_objects > 0:
+                    current_start = pts
 
         pos += HEADER_SIZE + seg_length
 
@@ -638,6 +655,13 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
     subtitles.  The resulting signal can then be aligned against the input
     subtitle file in the normal ffsubsync pipeline.
     """
+
+    # PGS is already in the MKV timebase so its duration cannot be compared
+    # against the SRT to infer a framerate ratio.  Returning None here prevents
+    # the duration-based framerate inference in try_sync from running.
+    @property
+    def num_frames(self) -> None:
+        return None
 
     def __init__(
         self,
@@ -706,6 +730,14 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
             )
 
         logger.info("found %d PGS subtitle segments", len(timings))
+        for i, (s, e) in enumerate(timings[:8]):
+            logger.debug(
+                "  PGS[%d]: %s --> %s (%.3fs)",
+                i,
+                str(timedelta(seconds=s)),
+                str(timedelta(seconds=e)),
+                e - s,
+            )
 
         max_time = max(end for _, end in timings)
         num_samples = int(max_time * self.sample_rate) + 2
