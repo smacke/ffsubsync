@@ -533,6 +533,41 @@ class DeserializeSpeechTransformer(TransformerMixin):
         return self.deserialized_speech_results_
 
 
+def find_pgs_stream(
+    fname: str,
+    ffmpeg_path: Optional[str] = None,
+    gui_mode: bool = False,
+) -> Optional[str]:
+    """Return the ffmpeg stream specifier for the first PGS subtitle track in *fname*.
+
+    Uses ``ffprobe`` to inspect the file.  Returns a string like ``"0:s:0"`` on
+    success, or ``None`` if the file has no ``hdmv_pgs_subtitle`` streams.
+    """
+    try:
+        probe = ffmpeg.probe(
+            fname,
+            cmd=ffmpeg_bin_path("ffprobe", gui_mode, ffmpeg_resources_path=ffmpeg_path),
+        )
+    except Exception as e:
+        logger.warning("ffprobe failed while searching for PGS streams: %s", e)
+        return None
+
+    sub_index = 0
+    for stream in probe.get("streams", []):
+        if stream.get("codec_type") == "subtitle":
+            if stream.get("codec_name") == "hdmv_pgs_subtitle":
+                specifier = "0:s:{}".format(sub_index)
+                logger.info(
+                    "auto-detected PGS stream: %s (ffmpeg stream index %s)",
+                    specifier,
+                    stream.get("index"),
+                )
+                return specifier
+            sub_index += 1
+
+    return None
+
+
 def _parse_pgs_timings(data: bytes) -> List[Tuple[float, float]]:
     """Parse raw PGS (Presentation Graphic Stream / SUP) binary data.
 
@@ -621,9 +656,17 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
         self.pgs_speech_results_: Optional[np.ndarray] = None
 
     def fit(self, fname: str, *_) -> "PGSSpeechTransformer":
-        stream = self.ref_stream if self.ref_stream is not None else "0:s:0"
-        if not stream.startswith("0:"):
-            stream = "0:" + stream
+        if self.ref_stream is None:
+            stream = find_pgs_stream(fname, self.ffmpeg_path, self.gui_mode)
+            if stream is None:
+                raise ValueError(
+                    "No hdmv_pgs_subtitle stream found in {}. "
+                    "Specify one explicitly with --pgs-ref-stream.".format(fname)
+                )
+        else:
+            stream = self.ref_stream
+            if not stream.startswith("0:"):
+                stream = "0:" + stream
 
         ffmpeg_args = [
             ffmpeg_bin_path(

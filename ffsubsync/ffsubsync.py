@@ -223,8 +223,10 @@ def try_sync(
 def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
     pgs_stream = getattr(args, "pgs_ref_stream", None)
     if pgs_stream is not None:
-        if not pgs_stream.startswith("0:"):
-            pgs_stream = "0:" + pgs_stream
+        # "auto" (bare --pgs-ref-stream flag) → let PGSSpeechTransformer auto-detect
+        resolved_stream: Optional[str] = None if pgs_stream == "auto" else pgs_stream
+        if resolved_stream is not None and not resolved_stream.startswith("0:"):
+            resolved_stream = "0:" + resolved_stream
         return Pipeline(
             [
                 (
@@ -233,7 +235,7 @@ def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
                         sample_rate=SAMPLE_RATE,
                         start_seconds=args.start_seconds,
                         ffmpeg_path=args.ffmpeg_path,
-                        ref_stream=pgs_stream,
+                        ref_stream=resolved_stream,
                         gui_mode=args.gui_mode,
                     ),
                 ),
@@ -578,13 +580,16 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--pgs-ref-stream",
         "--pgsstream",
+        nargs="?",
+        const="auto",
         default=None,
         help=(
-            "Extract PGS (Presentation Graphic Stream) image-based subtitles from "
-            "the specified stream in the reference MKV and use their on-screen "
-            "timings as sync reference instead of audio voice-activity detection. "
-            "Formatted like ffmpeg stream specifiers (leading `0:` is optional). "
-            "Example: `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream s:0`"
+            "Use a PGS (Presentation Graphic Stream) image-based subtitle track from "
+            "the reference MKV as the sync reference instead of audio VAD. "
+            "Optionally specify the stream (leading `0:` is optional, e.g. `s:0` or `3`). "
+            "Omit the value to auto-detect the first hdmv_pgs_subtitle track. "
+            "Example: `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream` (auto) "
+            "or `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream s:2` (explicit)."
         ),
     )
 
