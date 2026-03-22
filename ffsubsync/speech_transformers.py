@@ -574,7 +574,7 @@ def _get_pgs_timings_via_ffprobe(
     ffmpeg_path: Optional[str] = None,
     gui_mode: bool = False,
 ) -> Optional[List[Tuple[float, float]]]:
-    """Fast path: read PGS timings from MKV container metadata using ffprobe.
+    """Read PGS timings from container metadata using ffprobe.
 
     MKV stores per-packet PTS and duration for subtitle streams, so we can
     get start/end timestamps without extracting or parsing the raw SUP binary.
@@ -582,7 +582,7 @@ def _get_pgs_timings_via_ffprobe(
     are tiny (~30-byte) packets with ``duration_time=N/A``.
 
     Returns a list of ``(start_seconds, end_seconds)`` tuples, or ``None`` if
-    ffprobe fails or the durations are not usable (fall back to SUP parsing).
+    ffprobe fails or returns no usable durations.
     """
     ffprobe_cmd = ffmpeg_bin_path(
         "ffprobe", gui_mode, ffmpeg_resources_path=ffmpeg_path
@@ -590,56 +590,34 @@ def _get_pgs_timings_via_ffprobe(
     # ffprobe -select_streams does not accept the "0:" input-index prefix;
     # strip it so "0:s:0" → "s:0" and "0:3" → "3".
     probe_stream = stream[2:] if stream.startswith("0:") else stream
-    args = [
-        ffprobe_cmd,
-        "-v",
-        "quiet",
-        "-show_packets",
-        "-select_streams",
-        probe_stream,
-        "-show_entries",
-        "packet=pts_time,duration_time,size",
-        fname,
-    ]
-    process = subprocess.Popen(args, **subprocess_args(include_stdout=True))
-    stdout, _ = process.communicate()
-    if process.returncode != 0 or not stdout:
+    try:
+        probe_data = ffmpeg.probe(
+            fname,
+            cmd=ffprobe_cmd,
+            show_packets=None,
+            select_streams=probe_stream,
+            show_entries="packet=pts_time,duration_time,size",
+        )
+    except Exception:
         return None
 
     results: List[Tuple[float, float]] = []
-    pts_time: Optional[float] = None
-    duration_time: Optional[float] = None
-    size: Optional[int] = None
-
-    for raw_line in stdout.decode("utf-8", errors="replace").splitlines():
-        line = raw_line.strip()
-        if line == "[PACKET]":
-            pts_time = duration_time = size = None
-        elif line == "[/PACKET]":
-            if (
-                pts_time is not None
-                and duration_time is not None
-                and size is not None
-                and size > 50  # skip clear events (~30 bytes)
-            ):
-                results.append((pts_time, pts_time + duration_time))
-        elif line.startswith("pts_time="):
-            try:
-                pts_time = float(line.split("=", 1)[1])
-            except ValueError:
-                pass
-        elif line.startswith("duration_time="):
-            val = line.split("=", 1)[1]
-            if val != "N/A":
-                try:
-                    duration_time = float(val)
-                except ValueError:
-                    pass
-        elif line.startswith("size="):
-            try:
-                size = int(line.split("=", 1)[1])
-            except ValueError:
-                pass
+    for packet in probe_data.get("packets", []):
+        pts_time_str = packet.get("pts_time")
+        duration_time_str = packet.get("duration_time")
+        size_str = packet.get("size")
+        if pts_time_str is None or duration_time_str is None or size_str is None:
+            continue
+        if duration_time_str == "N/A":
+            continue
+        try:
+            pts_time = float(pts_time_str)
+            duration_time = float(duration_time_str)
+            size = int(size_str)
+        except ValueError:
+            continue
+        if size > 50:  # skip clear events (~30 bytes)
+            results.append((pts_time, pts_time + duration_time))
 
     if not results:
         return None
@@ -702,9 +680,7 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
             raise ValueError(
                 "Failed to get PGS timings via ffprobe for stream {} from {}. "
                 "Make sure the stream exists and is an hdmv_pgs_subtitle track "
-                "(check with: ffprobe -show_streams {}).".format(
-                    stream, fname, fname
-                )
+                "(check with: ffprobe -show_streams {}).".format(stream, fname, fname)
             )
 
         if not timings:
