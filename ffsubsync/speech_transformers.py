@@ -568,118 +568,6 @@ def find_pgs_stream(
     return None
 
 
-def _get_pgs_timings_via_mkvextract(
-    fname: str,
-    stream: str,
-    gui_mode: bool = False,
-) -> Optional[List[Tuple[float, float]]]:
-    """Fastest path: extract PGS SUP data using mkvextract (mkvtoolnix).
-
-    mkvextract uses the MKV Cues (seek index) to jump directly to subtitle
-    clusters, skipping all video/audio data.  Roughly 3x faster than
-    ``ffprobe -show_packets`` for files on slow (network) mounts.
-
-    Returns ``None`` if mkvtoolnix is not installed or extraction fails.
-    """
-    import json
-    import os
-    import shutil
-    import tempfile
-
-    if not shutil.which("mkvextract") or not shutil.which("mkvmerge"):
-        logger.debug("mkvextract/mkvmerge not found in PATH")
-        return None
-
-    # mkvextract only makes sense for MKV containers.
-    if not fname.lower().endswith((".mkv", ".mka", ".mks")):
-        logger.debug("mkvextract skipped: not an MKV container")
-        return None
-
-    # --- Resolve mkvmerge track ID from stream specifier ---
-    try:
-        proc = subprocess.Popen(
-            ["mkvmerge", "--identify", "--identification-format", "json", fname],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        stdout, _ = proc.communicate(timeout=15)
-        if proc.returncode not in (0, 1):  # mkvmerge exits 1 for warnings
-            logger.debug("mkvmerge --identify failed (returncode %d)", proc.returncode)
-            return None
-        info = json.loads(stdout.decode("utf-8", errors="replace"))
-    except Exception as exc:
-        logger.debug("mkvmerge --identify exception: %s", exc)
-        return None
-
-    tracks = info.get("tracks", [])
-    pgs_tracks = [
-        t
-        for t in tracks
-        if t.get("type") == "subtitles" and "PGS" in t.get("codec", "").upper()
-    ]
-    if not pgs_tracks:
-        logger.debug("mkvmerge found no PGS subtitle tracks")
-        return None
-
-    # Map "0:s:N" → N-th PGS track; "0:N" or "N" → track with that ID.
-    track_id: Optional[int] = None
-    if "s:" in stream:
-        try:
-            sub_idx = int(stream.rsplit(":", 1)[-1])
-            if sub_idx < len(pgs_tracks):
-                track_id = pgs_tracks[sub_idx]["id"]
-        except (ValueError, KeyError, IndexError):
-            pass
-    else:
-        try:
-            abs_idx = int(stream.rsplit(":", 1)[-1])
-            for t in pgs_tracks:
-                if t.get("id") == abs_idx:
-                    track_id = abs_idx
-                    break
-        except (ValueError, KeyError):
-            pass
-    if track_id is None:
-        track_id = pgs_tracks[0]["id"]  # fallback: first PGS track
-
-    # --- Extract SUP stream to a local temp file ---
-    # mkvextract writes track data to a named file, not to stdout, so we use
-    # a temp file on local disk (fast SSD write) then read it back.
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".sup")
-    os.close(tmp_fd)
-    try:
-        proc = subprocess.Popen(
-            ["mkvextract", "tracks", fname, "{}:{}".format(track_id, tmp_path)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        try:
-            proc.wait(timeout=300)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            logger.debug("mkvextract timed out")
-            return None
-        if proc.returncode != 0:
-            logger.debug("mkvextract failed (returncode %d)", proc.returncode)
-            return None
-        with open(tmp_path, "rb") as fh:
-            pgs_data = fh.read()
-    except Exception as exc:
-        logger.debug("mkvextract exception: %s", exc)
-        return None
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-
-    if not pgs_data:
-        return None
-    return _parse_pgs_timings(pgs_data)
-
-
 def _get_pgs_timings_via_ffprobe(
     fname: str,
     stream: str,
@@ -758,82 +646,6 @@ def _get_pgs_timings_via_ffprobe(
     return results
 
 
-def _parse_pgs_timings(data: bytes) -> List[Tuple[float, float]]:
-    """Parse raw PGS (Presentation Graphic Stream / SUP) binary data.
-
-    PGS packet header (13 bytes):
-      0-1  : "PG" magic (0x50 0x47)
-      2-5  : PTS  – unsigned 32-bit big-endian, 90 kHz ticks
-      6-9  : DTS  – unsigned 32-bit big-endian (ignored here)
-      10   : segment type (0x16 = PCS, 0x14 = PDS, 0x15 = ODS, 0x17 = WDS, 0x80 = END)
-      11-12: segment data length, big-endian
-
-    PCS data layout (offsets from byte 13):
-      0-1  : video width
-      2-3  : video height
-      4    : frame rate byte
-      5-6  : composition number
-      7    : composition state  (0x00=Normal, 0x40=Acquisition, 0x80=Epoch Start)
-      8    : palette update flag  (0x80 = palette-only, subtitle unchanged)
-      9    : palette ID
-      10   : number of composition objects
-
-    Logic:
-      - Palette-update-only PCS → skip (existing subtitle is unchanged).
-      - Any other PCS → close any currently-open subtitle first (handles
-        both explicit clears and back-to-back / epoch-start transitions),
-        then open a new one if num_objects > 0.
-    """
-    import struct
-
-    PGS_MAGIC = b"\x50\x47"  # "PG"
-    SEG_PCS = 0x16
-    PCS_PALETTE_UPDATE_OFFSET = 8
-    PCS_NUM_OBJECTS_OFFSET = 10
-    PCS_MIN_LENGTH = 11
-    HEADER_SIZE = 13
-
-    results: List[Tuple[float, float]] = []
-    current_start: Optional[float] = None
-    pos = 0
-
-    while pos + HEADER_SIZE <= len(data):
-        if data[pos : pos + 2] != PGS_MAGIC:
-            next_magic = data.find(PGS_MAGIC, pos + 1)
-            if next_magic == -1:
-                break
-            pos = next_magic
-            continue
-
-        pts: float = struct.unpack_from(">I", data, pos + 2)[0] / 90000.0
-        seg_type: int = data[pos + 10]
-        seg_length: int = struct.unpack_from(">H", data, pos + 11)[0]
-
-        if seg_type == SEG_PCS and seg_length >= PCS_MIN_LENGTH:
-            pcs_start = pos + HEADER_SIZE
-            palette_update_flag: int = data[pcs_start + PCS_PALETTE_UPDATE_OFFSET]
-            num_objects: int = data[pcs_start + PCS_NUM_OBJECTS_OFFSET]
-
-            if palette_update_flag == 0x80:
-                # Palette-only update: subtitle image unchanged, skip entirely.
-                pass
-            else:
-                # Any other PCS closes the currently-displayed subtitle (if any).
-                # This correctly handles:
-                #   - explicit clear (num_objects=0 after a subtitle)
-                #   - back-to-back subtitles (num_objects>0 replaces previous)
-                #   - epoch start (composition_state=0x80, implicit clear)
-                if current_start is not None:
-                    results.append((current_start, pts))
-                    current_start = None
-                if num_objects > 0:
-                    current_start = pts
-
-        pos += HEADER_SIZE + seg_length
-
-    return results
-
-
 class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
     """Use PGS (Presentation Graphic Stream) subtitle timings as a sync reference.
 
@@ -883,47 +695,17 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
                 stream = "0:" + stream
 
         logger.info("reading PGS timings for stream %s from %s...", stream, fname)
-        timings = _get_pgs_timings_via_mkvextract(fname, stream, self.gui_mode)
-        if timings is not None:
-            logger.info("used mkvextract fast path (%d segments)", len(timings))
-        else:
-            logger.info("mkvextract unavailable or failed, trying ffprobe...")
-            timings = _get_pgs_timings_via_ffprobe(
-                fname, stream, self.ffmpeg_path, self.gui_mode
-            )
+        timings = _get_pgs_timings_via_ffprobe(
+            fname, stream, self.ffmpeg_path, self.gui_mode
+        )
         if timings is None:
-            # Fallback: extract raw SUP stream and parse binary
-            logger.info("ffprobe fast path unavailable, extracting raw PGS stream...")
-            ffmpeg_args = [
-                ffmpeg_bin_path(
-                    "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
-                ),
-                "-loglevel",
-                "fatal",
-                "-nostdin",
-                "-i",
-                fname,
-                "-map",
-                stream,
-                "-c:s",
-                "copy",
-                "-f",
-                "sup",
-                "-",
-            ]
-            process = subprocess.Popen(
-                ffmpeg_args, **subprocess_args(include_stdout=True)
-            )
-            pgs_data, _ = process.communicate()
-            if process.returncode != 0 or not pgs_data:
-                raise ValueError(
-                    "Failed to extract PGS stream {} from {}. "
-                    "Make sure the stream exists and is an hdmv_pgs_subtitle track "
-                    "(check with: ffprobe -show_streams {}).".format(
-                        stream, fname, fname
-                    )
+            raise ValueError(
+                "Failed to get PGS timings via ffprobe for stream {} from {}. "
+                "Make sure the stream exists and is an hdmv_pgs_subtitle track "
+                "(check with: ffprobe -show_streams {}).".format(
+                    stream, fname, fname
                 )
-            timings = _parse_pgs_timings(pgs_data)
+            )
 
         if not timings:
             raise ValueError(
