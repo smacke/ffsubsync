@@ -1,6 +1,10 @@
 History
 =======
 
+Unreleased
+----------
+* Use webrtcvad-wheels on all platforms and remove the runtime setuptools dependency;
+
 0.4.31 (2025-11-23)
 -------------------
 * Add support for Python 3.14;
