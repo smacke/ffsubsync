@@ -1,7 +1,7 @@
 History
 =======
 
-Unreleased
+0.4.32 (2026-05-24)
 ----------
 * Use webrtcvad-wheels on all platforms and remove the runtime setuptools dependency;
 
