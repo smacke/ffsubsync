@@ -336,6 +336,17 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("cannot specify multiple input srt files for test cases")
         if len(args.srtin) > 1 and args.gui_mode:
             raise ValueError("cannot specify multiple input srt files in GUI mode")
+    else:
+        logger.info("No input srt specified; automatically detecting input str")
+        reference_base = os.path.splitext(args.reference)[0]
+        matching_files = [file for file in os.listdir() if file.startswith(reference_base) and file.endswith('.srt')]
+        if not matching_files:
+            raise ValueError("No matching input srt files found for reference.")
+        else:
+            args.srtin = matching_files
+            args.overwrite_input = True
+            for file in matching_files:
+                logger.info("Detected input srt: %s", file)
     if (
         args.make_test_case and not args.gui_mode
     ):  # this validation not necessary for gui mode
