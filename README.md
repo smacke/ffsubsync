@@ -45,6 +45,22 @@ If you want to live dangerously, you can grab the latest version as follows:
 pip install git+https://github.com/smacke/ffsubsync@latest
 ~~~
 
+Docker
+------
+The repository provides a multi-stage Dockerfile that defaults to installing
+the sources from the current working tree. Build the development image with:
+~~~
+docker build -t subsync .
+~~~
+To install a specific version from PyPI, set `FFSUBSYNC_VERSION`:
+~~~
+docker build -t subsync --build-arg FFSUBSYNC_VERSION=0.4.31 .
+~~~
+Run the resulting image with:
+~~~
+docker run --rm -v "$PWD":/video subsync --version
+~~~
+
 Usage
 -----
 `ffs`, `subsync` and `ffsubsync` all work as entrypoints:
