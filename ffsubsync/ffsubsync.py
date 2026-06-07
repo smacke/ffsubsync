@@ -30,6 +30,7 @@ from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
 from ffsubsync.speech_transformers import (
     VideoSpeechTransformer,
     DeserializeSpeechTransformer,
+    PGSSpeechTransformer,
     make_subtitle_speech_pipeline,
 )
 from ffsubsync.subtitle_parser import make_subtitle_parser
@@ -149,8 +150,10 @@ def try_sync(
                     continue
                 else:
                     srt_pipe.fit(srtin)
-            if not skip_infer_framerate_ratio and hasattr(
-                reference_pipe[-1], "num_frames"
+            if (
+                not skip_infer_framerate_ratio
+                and hasattr(reference_pipe[-1], "num_frames")
+                and reference_pipe[-1].num_frames is not None
             ):
                 inferred_framerate_ratio_from_length = (
                     float(reference_pipe[-1].num_frames)
@@ -220,6 +223,26 @@ def try_sync(
 
 
 def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
+    pgs_stream = getattr(args, "pgs_ref_stream", None)
+    if pgs_stream is not None:
+        # "auto" (bare --pgs-ref-stream flag) → let PGSSpeechTransformer auto-detect
+        resolved_stream: Optional[str] = None if pgs_stream == "auto" else pgs_stream
+        if resolved_stream is not None and not resolved_stream.startswith("0:"):
+            resolved_stream = "0:" + resolved_stream
+        return Pipeline(
+            [
+                (
+                    "speech_extract",
+                    PGSSpeechTransformer(
+                        sample_rate=SAMPLE_RATE,
+                        start_seconds=args.start_seconds,
+                        ffmpeg_path=args.ffmpeg_path,
+                        ref_stream=resolved_stream,
+                        gui_mode=args.gui_mode,
+                    ),
+                ),
+            ]
+        )
     ref_format = _ref_format(args.reference)
     if ref_format in SUBTITLE_EXTENSIONS:
         if args.vad is not None:
@@ -451,7 +474,7 @@ def _run_impl(args: argparse.Namespace, result: Dict[str, Any]) -> bool:
 
 
 def validate_and_transform_args(
-    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace]
+    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace],
 ) -> Optional[argparse.Namespace]:
     if isinstance(parser_or_args, argparse.Namespace):
         parser = None
@@ -484,7 +507,7 @@ def validate_and_transform_args(
 
 
 def run(
-    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace]
+    parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace],
 ) -> Dict[str, Any]:
     sync_was_successful = False
     result = {
@@ -554,6 +577,21 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
             "uses the first subtitle track; 0:a:3 would use the third audio track. "
             "You can also drop the leading `0:`; i.e. use s:0 or a:3, respectively. "
             "Example: `ffs ref.mkv -i in.srt -o out.srt --reference-stream s:2`"
+        ),
+    )
+    parser.add_argument(
+        "--pgs-ref-stream",
+        "--pgsstream",
+        nargs="?",
+        const="auto",
+        default=None,
+        help=(
+            "Use a PGS (Presentation Graphic Stream) image-based subtitle track from "
+            "the reference MKV as the sync reference instead of audio VAD. "
+            "Optionally specify the stream (leading `0:` is optional, e.g. `s:0` or `3`). "
+            "Omit the value to auto-detect the first hdmv_pgs_subtitle track. "
+            "Example: `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream` (auto) "
+            "or `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream s:2` (explicit)."
         ),
     )
 
