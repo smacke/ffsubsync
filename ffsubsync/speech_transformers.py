@@ -627,13 +627,23 @@ def _get_pgs_timings_via_ffprobe(
 class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
     """Use PGS (Presentation Graphic Stream) subtitle timings as a sync reference.
 
-    PGS subtitles are bitmap-based (e.g. Blu-ray) and cannot be converted to
-    text by ffmpeg.  This transformer extracts the raw SUP stream from the
-    video file, parses the on-screen / off-screen timestamps from the binary
-    Presentation Composition Segments, and builds the same kind of sparse
-    binary signal that :class:`SubtitleSpeechTransformer` produces for text
-    subtitles.  The resulting signal can then be aligned against the input
-    subtitle file in the normal ffsubsync pipeline.
+    PGS subtitles are bitmap-based (e.g. Blu-ray / HDMV) and cannot be converted
+    to text by ffmpeg, so they can't be fed through the normal subtitle pipeline.
+    However, when muxed into an MKV the container still stores a presentation
+    timestamp (``pts_time``) and ``duration_time`` for every subtitle packet, so
+    we can recover *when* each caption is on screen without decoding the bitmaps
+    or parsing the raw SUP/PCS binary at all.
+
+    This transformer reads those per-packet timings via ``ffprobe`` (see
+    :func:`_get_pgs_timings_via_ffprobe`), filtering out the tiny "clear" packets
+    that carry no image, and builds the same kind of sparse binary speech signal
+    that :class:`SubtitleSpeechTransformer` produces for text subtitles: 1.0 while
+    a caption is displayed, 0.0 otherwise. That signal can then be aligned against
+    the input subtitle file by the normal ffsubsync pipeline.
+
+    The reference stream may be given explicitly via ``ref_stream`` (with or
+    without a leading ``0:``), or left as ``None`` to auto-detect the first
+    ``hdmv_pgs_subtitle`` track in the file.
     """
 
     # PGS is already in the MKV timebase so its duration cannot be compared
