@@ -99,6 +99,19 @@ Previously-synced `*.synced.srt` outputs are skipped, so re-running is safe. Add
 `--overwrite-input` to overwrite the detected file(s) in place instead. Auto-
 detection is skipped when subtitles are piped in on stdin.
 
+The reference can also be a remote URL instead of a local file. Anything ffmpeg
+can read directly works as a video / audio reference, and remote subtitle files
+work as a reference too:
+~~~
+ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt
+ffs "https://example.com/reference.srt" -i unsynchronized.srt -o synchronized.srt
+~~~
+Supported protocols are `http(s)://`, `rtmp://`, `rtsp://`, and `ftp://`.
+Processing streams the reference over the network, so it depends on connection
+stability; for large or flaky sources, downloading first is more reliable.
+Sibling-subtitle auto-detection (the no-`-i` form above) is local-only and is
+skipped for remote references.
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:

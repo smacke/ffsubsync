@@ -24,6 +24,7 @@ from ffsubsync.constants import (
     FRAMERATE_RATIOS,
     SAMPLE_RATE,
     SUBTITLE_EXTENSIONS,
+    is_remote_url,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
 from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
@@ -403,6 +404,7 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("cannot specify multiple input srt files in GUI mode")
     elif (
         args.reference is not None
+        and not is_remote_url(args.reference)  # can't list a remote dir for sibling srts
         and args.extract_subs_from_stream is None
         and not args.gui_mode
         and not args.make_test_case
@@ -467,7 +469,11 @@ def validate_file_permissions(args: argparse.Namespace) -> None:
         "unable to {action} {file}; "
         "try ensuring file exists and has correct permissions"
     )
-    if args.reference is not None and not os.access(args.reference, os.R_OK):
+    if (
+        args.reference is not None
+        and not is_remote_url(args.reference)  # ffmpeg streams URLs directly; no local file to check
+        and not os.access(args.reference, os.R_OK)
+    ):
         raise ValueError(
             error_string_template.format(action="read reference", file=args.reference)
         )
