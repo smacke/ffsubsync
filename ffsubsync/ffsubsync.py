@@ -298,6 +298,9 @@ def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
                         ref_stream=ref_stream,
                         vlc_mode=args.vlc_mode,
                         gui_mode=args.gui_mode,
+                        max_duration_seconds=getattr(
+                            args, "max_duration_seconds", None
+                        ),
                     ),
                 ),
             ]
@@ -725,6 +728,15 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_MAX_OFFSET_SECONDS,
         help="The max allowed offset seconds for any subtitle segment "
         "(default=%d seconds)." % DEFAULT_MAX_OFFSET_SECONDS,
+    )
+    parser.add_argument(
+        "--max-duration-seconds",
+        type=float,
+        default=None,
+        help="If specified, only process the first this-many seconds of the "
+        "reference (measured from --start-seconds). Useful for speeding up "
+        "long or remote references, since ffmpeg stops reading/downloading "
+        "once this duration is reached.",
     )
     parser.add_argument(
         "--apply-offset-seconds",
