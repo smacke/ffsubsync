@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import sys
 
+from ffsubsync.constants import is_remote_url
+
 
 class open_file:
     """
@@ -13,6 +15,12 @@ class open_file:
         if filename is None:
             stream = sys.stdout if "w" in args else sys.stdin
             self.fh = open(stream.fileno(), *args, **kwargs)
+        elif isinstance(filename, str) and is_remote_url(filename):
+            import urllib.request
+
+            req = urllib.request.Request(filename, headers={"User-Agent": "ffsubsync"})
+            self.fh = urllib.request.urlopen(req)
+            self.closing = True
         elif isinstance(filename, str):
             self.fh = open(filename, *args, **kwargs)
             self.closing = True

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 
 SUBSYNC_RESOURCES_ENV_MAGIC: str = "ffsubsync_resources_xj48gjdkl340"
@@ -19,6 +19,24 @@ DEFAULT_MAX_OFFSET_SECONDS: int = 60
 DEFAULT_APPLY_OFFSET_SECONDS: int = 0
 
 SUBTITLE_EXTENSIONS: Tuple[str, ...] = ("srt", "ass", "ssa", "sub")
+
+# Remote URL protocols that ffmpeg can read directly as an input (`-i <url>`),
+# so a reference of this form needs no local download or read-permission check.
+REMOTE_URL_PROTOCOLS: Tuple[str, ...] = (
+    "http://",
+    "https://",
+    "rtmp://",
+    "rtsp://",
+    "ftp://",
+)
+
+
+def is_remote_url(path: Optional[str]) -> bool:
+    """Return True if *path* is a remote URL ffmpeg can stream directly."""
+    if path is None:
+        return False
+    return path.startswith(REMOTE_URL_PROTOCOLS)
+
 
 GITHUB_DEV_USER: str = "smacke"
 PROJECT_NAME: str = "FFsubsync"
