@@ -144,6 +144,14 @@ If the sync fails, the following recourses are available:
   Auditok does not specifically detect voice, but instead detects all audio;
   this property can yield suboptimal syncing behavior when a proper VAD can
   work well, but can be effective in some cases.
+- Try `--vad=fused`, which combines WebRTC with the neural
+  [silero](https://github.com/snakers4/silero-vad) VAD and can be more robust on
+  noisy audio. The strategy can be tuned: `--vad=fused:intersection`
+  (conservative -- speech only where both agree), `--vad=fused:union`
+  (aggressive -- speech where either fires), or `--vad=fused:weighted` (the
+  default). These options require the optional silero dependency, which itself
+  requires PyTorch (`pip install torch`); torch is not installed with `ffsubsync`
+  by default.
 
 If the sync still fails, consider trying one of the following similar tools:
 - [sc0ty/subsync](https://github.com/sc0ty/subsync): does speech-to-text and looks for matching word morphemes

@@ -795,10 +795,16 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
             "auditok",
             "subs_then_silero",
             "silero",
+            "fused",
+            "fused:weighted",
+            "fused:intersection",
+            "fused:union",
         ],
         default=None,
         help="Which voice activity detector to use for speech extraction "
-        "(if using video / audio as a reference, default={}).".format(DEFAULT_VAD),
+        "(if using video / audio as a reference, default={}). The `fused` "
+        "options combine webrtc and silero and require the optional silero "
+        "dependency (torch).".format(DEFAULT_VAD),
     )
     parser.add_argument(
         "--no-fix-framerate",

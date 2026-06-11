@@ -167,7 +167,16 @@ def _make_webrtcvad_detector(
 def _make_silero_detector(
     sample_rate: int, frame_rate: int, non_speech_label: float
 ) -> Callable[[bytes], np.ndarray]:
-    import torch
+    try:
+        import torch
+    except ImportError as e:
+        logger.error(
+            "Error: the silero VAD requires PyTorch, which is not installed!\n"
+            "        Install it with `pip install torch` (see https://pytorch.org\n"
+            "        for platform-specific instructions). torch is an optional\n"
+            "        dependency and is not installed with ffsubsync by default."
+        )
+        raise e
 
     window_duration = 1.0 / sample_rate  # duration in seconds
     frames_per_window = int(window_duration * frame_rate + 0.5)
@@ -203,6 +212,52 @@ def _make_silero_detector(
                 failures += 1
             media_bstring.append(1.0 - (1.0 - speech_prob) * (1.0 - non_speech_label))
         return np.array(media_bstring)
+
+    return _detect
+
+
+_FUSION_STRATEGIES: Tuple[str, ...] = ("weighted", "intersection", "union")
+
+
+def _make_fused_detector(
+    sample_rate: int,
+    frame_rate: int,
+    non_speech_label: float,
+    fusion_strategy: str = "weighted",
+) -> Callable[[bytes], np.ndarray]:
+    """Combine the webrtc and silero VADs into a single detector.
+
+    Requires the optional silero dependency (torch); a clear error is raised if
+    it is missing. ``fusion_strategy`` controls how the two are combined:
+    ``intersection`` (speech only where both agree -- conservative),
+    ``union`` (speech where either fires -- aggressive), or ``weighted``
+    (default; ``0.6 * silero + 0.4 * webrtc``).
+    """
+    if fusion_strategy not in _FUSION_STRATEGIES:
+        raise ValueError(
+            "unknown fused VAD strategy %r; choose one of %s"
+            % (fusion_strategy, ", ".join(_FUSION_STRATEGIES))
+        )
+    webrtc_detector = _make_webrtcvad_detector(
+        sample_rate, frame_rate, non_speech_label
+    )
+    silero_detector = _make_silero_detector(
+        sample_rate, frame_rate, non_speech_label
+    )
+
+    def _detect(asegment) -> np.ndarray:
+        webrtc_result = webrtc_detector(asegment)
+        silero_result = silero_detector(asegment)
+        # the two detectors can disagree by a frame at the tail; clip to common length
+        min_len = min(len(webrtc_result), len(silero_result))
+        webrtc_result = webrtc_result[:min_len]
+        silero_result = silero_result[:min_len]
+        if fusion_strategy == "intersection":
+            return np.minimum(webrtc_result, silero_result)
+        elif fusion_strategy == "union":
+            return np.maximum(webrtc_result, silero_result)
+        else:  # weighted
+            return 0.6 * silero_result + 0.4 * webrtc_result
 
     return _detect
 
@@ -438,7 +493,18 @@ class VideoSpeechTransformer(TransformerMixin):
             total_duration = None
         if self.max_duration_seconds is not None and total_duration is not None:
             total_duration = min(total_duration, self.max_duration_seconds)
-        if "webrtc" in self.vad:
+        if "fused" in self.vad:
+            # e.g. "fused" or "fused:intersection"; default strategy is weighted
+            fusion_strategy = (
+                self.vad.split(":", 1)[1] if ":" in self.vad else "weighted"
+            )
+            detector = _make_fused_detector(
+                self.sample_rate,
+                self.frame_rate,
+                self._non_speech_label,
+                fusion_strategy,
+            )
+        elif "webrtc" in self.vad:
             detector = _make_webrtcvad_detector(
                 self.sample_rate, self.frame_rate, self._non_speech_label
             )
@@ -503,7 +569,9 @@ class VideoSpeechTransformer(TransformerMixin):
                         assert self.gui_mode
                         # no need to flush since we pass -u to do unbuffered output for gui mode
                         print(pbar_output.read())
-                    if "silero" not in self.vad:
+                    # silero (and fused, which wraps it) needs the raw s16le
+                    # bytes for its own int16 reinterpretation
+                    if "silero" not in self.vad and "fused" not in self.vad:
                         in_bytes = np.frombuffer(in_bytes, np.uint8)
                     media_bstring.append(detector(in_bytes))
         process.wait()
