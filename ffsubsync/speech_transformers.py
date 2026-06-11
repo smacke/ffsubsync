@@ -3,6 +3,7 @@ import os
 from contextlib import contextmanager
 import logging
 import io
+import re
 import subprocess
 import sys
 import tempfile
@@ -522,20 +523,33 @@ _PAIRED_NESTER: Dict[str, str] = {
     "(": ")",
     "{": "}",
     "[": "]",
-    # FIXME: False positive sometimes when there are html tags, e.g. <i> Hello? </i>
-    # '<': '>',
+    "（": "）",  # full-width / CJK brackets, common in non-English subtitles
+    "【": "】",
+    "「": "」",
 }
+
+# Markup tags (e.g. <i>, </i>, <font ...>) carry no speech. Stripping them
+# before classifying a line lets us recognize a wrapped cue like "<i>[music]</i>"
+# as non-dialogue while still treating "<i>Hello?</i>" as dialogue -- which is
+# why '<' is intentionally not a paired nester above.
+_MARKUP_TAG: "re.Pattern[str]" = re.compile(r"<[^>]+>")
+
+# Symbols that, on their own, denote a musical / non-speech cue.
+_NON_DIALOGUE_SYMBOLS: frozenset = frozenset("♪♫♬♩🎵🎶")
 
 
 # TODO: need way better metadata detector
 def _is_metadata(content: str, is_beginning_or_end: bool) -> bool:
-    content = content.strip()
+    content = _MARKUP_TAG.sub("", content).strip()
     if len(content) == 0:
         return True
     if (
         content[0] in _PAIRED_NESTER.keys()
         and content[-1] == _PAIRED_NESTER[content[0]]
     ):
+        return True
+    # lines consisting only of music notes / sound symbols are cues, not speech
+    if all(ch.isspace() or ch in _NON_DIALOGUE_SYMBOLS for ch in content):
         return True
     if is_beginning_or_end:
         if "english" in content.lower():
