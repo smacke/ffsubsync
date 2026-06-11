@@ -5,6 +5,7 @@ import logging
 import io
 import subprocess
 import sys
+import tempfile
 from datetime import timedelta
 from typing import cast, Callable, Dict, List, Optional, Tuple, Union
 
@@ -18,6 +19,7 @@ from ffsubsync.constants import (
     DEFAULT_SCALE_FACTOR,
     DEFAULT_START_SECONDS,
     SAMPLE_RATE,
+    is_remote_url,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path, subprocess_args
 from ffsubsync.generic_subtitles import GenericSubtitle
@@ -238,6 +240,7 @@ class VideoSpeechTransformer(TransformerMixin):
         vlc_mode: bool = False,
         gui_mode: bool = False,
         max_duration_seconds: Optional[float] = None,
+        extract_audio_first: bool = False,
     ) -> None:
         super(VideoSpeechTransformer, self).__init__()
         self.vad: str = vad
@@ -250,6 +253,7 @@ class VideoSpeechTransformer(TransformerMixin):
         self.vlc_mode: bool = vlc_mode
         self.gui_mode: bool = gui_mode
         self.max_duration_seconds: Optional[float] = max_duration_seconds
+        self.extract_audio_first: bool = extract_audio_first
         self.video_speech_results_: Optional[np.ndarray] = None
 
     def try_fit_using_embedded_subs(self, fname: str) -> None:
@@ -342,6 +346,51 @@ class VideoSpeechTransformer(TransformerMixin):
         )
         return ffmpeg_args
 
+    def _extract_audio_to_temp(self, url: str) -> Optional[str]:
+        """Copy the reference's audio to a local temp file (no re-encode).
+
+        Returns the temp path, or None if extraction fails (the caller then
+        falls back to streaming the URL directly). Uses a Matroska (.mka)
+        container, which accepts essentially any audio codec, so ``-acodec
+        copy`` is safe regardless of the source's codec.
+        """
+        fd, temp_path = tempfile.mkstemp(suffix=".mka")
+        os.close(fd)
+        ffmpeg_args = [
+            ffmpeg_bin_path(
+                "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+            ),
+            "-loglevel",
+            "fatal",
+            "-nostdin",
+            "-y",
+            "-i",
+            url,
+            "-vn",
+            "-acodec",
+            "copy",
+        ]
+        if self.max_duration_seconds is not None:
+            # extract from t=0 up to start+max so the main pass can still seek
+            # --start-seconds accurately within the local file
+            limit = self.start_seconds + self.max_duration_seconds
+            ffmpeg_args.extend(["-t", str(timedelta(seconds=limit))])
+        ffmpeg_args.append(temp_path)
+        logger.info("extracting audio from remote reference to %s...", temp_path)
+        retcode = subprocess.call(ffmpeg_args, **subprocess_args(include_stdout=False))
+        if retcode != 0 or not os.path.getsize(temp_path):
+            logger.warning(
+                "audio extraction failed (ffmpeg returned %d); "
+                "falling back to streaming the reference directly",
+                retcode,
+            )
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return None
+        return temp_path
+
     def fit(self, fname: str, *_) -> "VideoSpeechTransformer":
         if "subs" in self.vad and (
             self.ref_stream is None or self.ref_stream.startswith("0:s:")
@@ -353,6 +402,22 @@ class VideoSpeechTransformer(TransformerMixin):
                 return self
             except Exception as e:
                 logger.info(e)
+        temp_audio = None
+        if self.extract_audio_first and is_remote_url(fname):
+            temp_audio = self._extract_audio_to_temp(fname)
+            if temp_audio is not None:
+                fname = temp_audio
+        try:
+            self._fit_using_audio(fname)
+        finally:
+            if temp_audio is not None and os.path.exists(temp_audio):
+                try:
+                    os.remove(temp_audio)
+                except OSError:
+                    logger.warning("failed to remove temp audio file %s", temp_audio)
+        return self
+
+    def _fit_using_audio(self, fname: str) -> None:
         try:
             total_duration = (
                 float(
@@ -448,7 +513,6 @@ class VideoSpeechTransformer(TransformerMixin):
             )
         self.video_speech_results_ = np.concatenate(media_bstring)
         logger.info("total of speech segments: %s", np.sum(self.video_speech_results_))
-        return self
 
     def transform(self, *_) -> np.ndarray:
         return self.video_speech_results_

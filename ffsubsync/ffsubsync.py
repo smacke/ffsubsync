@@ -301,6 +301,9 @@ def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
                         max_duration_seconds=getattr(
                             args, "max_duration_seconds", None
                         ),
+                        extract_audio_first=getattr(
+                            args, "extract_audio_first", False
+                        ),
                     ),
                 ),
             ]
@@ -737,6 +740,14 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         "reference (measured from --start-seconds). Useful for speeding up "
         "long or remote references, since ffmpeg stops reading/downloading "
         "once this duration is reached.",
+    )
+    parser.add_argument(
+        "--extract-audio-first",
+        action="store_true",
+        help="For remote URL references, first copy the audio track to a local "
+        "temp file (no re-encode) and run speech detection on that, instead of "
+        "streaming the full container over the network during detection. Can be "
+        "more stable on flaky connections; ignored for local references.",
     )
     parser.add_argument(
         "--apply-offset-seconds",

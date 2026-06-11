@@ -119,6 +119,14 @@ that duration is reached:
 ~~~
 ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt --max-duration-seconds 600
 ~~~
+On flaky connections, `--extract-audio-first` can be more reliable: instead of
+holding a network stream open throughout speech detection, it first copies the
+remote audio track to a local temp file (no re-encode) and runs detection on
+that. It is ignored for local references and composes with
+`--max-duration-seconds`:
+~~~
+ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt --extract-audio-first
+~~~
 
 Sync Issues
 -----------
