@@ -237,6 +237,7 @@ class VideoSpeechTransformer(TransformerMixin):
         ref_stream: Optional[str] = None,
         vlc_mode: bool = False,
         gui_mode: bool = False,
+        max_duration_seconds: Optional[float] = None,
     ) -> None:
         super(VideoSpeechTransformer, self).__init__()
         self.vad: str = vad
@@ -248,6 +249,7 @@ class VideoSpeechTransformer(TransformerMixin):
         self.ref_stream: Optional[str] = ref_stream
         self.vlc_mode: bool = vlc_mode
         self.gui_mode: bool = gui_mode
+        self.max_duration_seconds: Optional[float] = max_duration_seconds
         self.video_speech_results_: Optional[np.ndarray] = None
 
     def try_fit_using_embedded_subs(self, fname: str) -> None:
@@ -301,6 +303,45 @@ class VideoSpeechTransformer(TransformerMixin):
         subs_to_use = embedded_subs[int(np.argmax(embedded_subs_times))]
         self.video_speech_results_ = subs_to_use.subtitle_speech_results_
 
+    def _build_ffmpeg_args(self, fname: str) -> List[str]:
+        ffmpeg_args = [
+            ffmpeg_bin_path(
+                "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+            )
+        ]
+        if self.start_seconds > 0:
+            ffmpeg_args.extend(
+                [
+                    "-ss",
+                    str(timedelta(seconds=self.start_seconds)),
+                ]
+            )
+        if self.max_duration_seconds is not None:
+            # input-side -t: stop reading (and, for remote URLs, downloading)
+            # after this many seconds past the seek point
+            ffmpeg_args.extend(
+                ["-t", str(timedelta(seconds=self.max_duration_seconds))]
+            )
+        ffmpeg_args.extend(["-loglevel", "fatal", "-nostdin", "-i", fname])
+        if self.ref_stream is not None and self.ref_stream.startswith("0:a:"):
+            ffmpeg_args.extend(["-map", self.ref_stream])
+        ffmpeg_args.extend(
+            [
+                "-f",
+                "s16le",
+                "-ac",
+                "1",
+                "-acodec",
+                "pcm_s16le",
+                "-af",
+                "aresample=async=1",
+                "-ar",
+                str(self.frame_rate),
+                "-",
+            ]
+        )
+        return ffmpeg_args
+
     def fit(self, fname: str, *_) -> "VideoSpeechTransformer":
         if "subs" in self.vad and (
             self.ref_stream is None or self.ref_stream.startswith("0:s:")
@@ -329,6 +370,8 @@ class VideoSpeechTransformer(TransformerMixin):
         except Exception as e:
             logger.warning(e)
             total_duration = None
+        if self.max_duration_seconds is not None and total_duration is not None:
+            total_duration = min(total_duration, self.max_duration_seconds)
         if "webrtc" in self.vad:
             detector = _make_webrtcvad_detector(
                 self.sample_rate, self.frame_rate, self._non_speech_label
@@ -344,36 +387,7 @@ class VideoSpeechTransformer(TransformerMixin):
         else:
             raise ValueError("unknown vad: %s" % self.vad)
         media_bstring: List[np.ndarray] = []
-        ffmpeg_args = [
-            ffmpeg_bin_path(
-                "ffmpeg", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
-            )
-        ]
-        if self.start_seconds > 0:
-            ffmpeg_args.extend(
-                [
-                    "-ss",
-                    str(timedelta(seconds=self.start_seconds)),
-                ]
-            )
-        ffmpeg_args.extend(["-loglevel", "fatal", "-nostdin", "-i", fname])
-        if self.ref_stream is not None and self.ref_stream.startswith("0:a:"):
-            ffmpeg_args.extend(["-map", self.ref_stream])
-        ffmpeg_args.extend(
-            [
-                "-f",
-                "s16le",
-                "-ac",
-                "1",
-                "-acodec",
-                "pcm_s16le",
-                "-af",
-                "aresample=async=1",
-                "-ar",
-                str(self.frame_rate),
-                "-",
-            ]
-        )
+        ffmpeg_args = self._build_ffmpeg_args(fname)
         process = subprocess.Popen(ffmpeg_args, **subprocess_args(include_stdout=True))
         bytes_per_frame = 2
         frames_per_window = bytes_per_frame * self.frame_rate // self.sample_rate

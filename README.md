@@ -112,6 +112,14 @@ stability; for large or flaky sources, downloading first is more reliable.
 Sibling-subtitle auto-detection (the no-`-i` form above) is local-only and is
 skipped for remote references.
 
+To speed up long references, `--max-duration-seconds N` processes only the
+first `N` seconds (measured from `--start-seconds`). This is especially helpful
+for remote references, since ffmpeg stops reading—and therefore downloading—once
+that duration is reached:
+~~~
+ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt --max-duration-seconds 600
+~~~
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:
