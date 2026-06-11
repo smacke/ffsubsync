@@ -9,6 +9,15 @@ del get_versions
 
 def get_version():
     if "unknown" in __version__.lower():
+        # When frozen into a standalone binary (e.g. via PyInstaller) there is
+        # no git metadata or resource file to read the version from, so the CI
+        # build writes the tag into this module ahead of time.
+        try:
+            from ffsubsync._frozen_version import FFSUBSYNC_VERSION
+
+            return FFSUBSYNC_VERSION
+        except ImportError:
+            pass
         with open(
             os.path.join(os.environ[SUBSYNC_RESOURCES_ENV_MAGIC], "__version__")
         ) as f:
