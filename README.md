@@ -142,6 +142,30 @@ detected and corrected. Tune it with `--segment-count N` (default 8),
 and `--parallel-workers N` (overlap segment downloads, default 4). It applies to
 video / audio references only.
 
+Using as a Library
+------------------
+`ffsubsync` can be driven programmatically via `ffsubsync.run`, which accepts an
+`argparse.Namespace` (build one with `make_parser`). To surface progress in your
+own UI, pass a `progress_handler` callback; it is invoked repeatedly while the
+reference's audio is being decoded with a `ProgressInfo` describing how far along
+the extraction is:
+~~~python
+import ffsubsync
+from ffsubsync.ffsubsync import make_parser
+
+def on_progress(info: ffsubsync.ProgressInfo) -> None:
+    # info.processed_seconds / info.total_seconds (total may be None);
+    # info.fraction is a 0.0-1.0 ratio (None if the total is unknown).
+    if info.fraction is not None:
+        print(f"{info.fraction:.0%}")
+
+args = make_parser().parse_args(["ref.mkv", "-i", "in.srt", "-o", "out.srt"])
+result = ffsubsync.run(args, progress_handler=on_progress)
+~~~
+The handler is called only for the video / audio reference path (the dominant
+cost of a sync). Exceptions it raises are logged and swallowed, so a buggy
+handler can never abort syncing.
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:
