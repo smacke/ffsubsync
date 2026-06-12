@@ -30,6 +30,7 @@ from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
 from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
 from ffsubsync.speech_transformers import (
     VideoSpeechTransformer,
+    MultiSegmentVideoSpeechTransformer,
     DeserializeSpeechTransformer,
     PGSSpeechTransformer,
     make_subtitle_speech_pipeline,
@@ -284,6 +285,29 @@ def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
         ref_stream = args.reference_stream
         if ref_stream is not None and not ref_stream.startswith("0:"):
             ref_stream = "0:" + ref_stream
+        if getattr(args, "multi_segment_sync", False):
+            return Pipeline(
+                [
+                    (
+                        "speech_extract",
+                        MultiSegmentVideoSpeechTransformer(
+                            vad=vad,
+                            sample_rate=SAMPLE_RATE,
+                            frame_rate=args.frame_rate,
+                            non_speech_label=args.non_speech_label,
+                            segment_count=getattr(args, "segment_count", 8),
+                            skip_intro_outro=getattr(
+                                args, "skip_intro_outro", False
+                            ),
+                            parallel_workers=getattr(args, "parallel_workers", 4),
+                            ffmpeg_path=args.ffmpeg_path,
+                            ref_stream=ref_stream,
+                            vlc_mode=args.vlc_mode,
+                            gui_mode=args.gui_mode,
+                        ),
+                    ),
+                ]
+            )
         return Pipeline(
             [
                 (
@@ -748,6 +772,33 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         "temp file (no re-encode) and run speech detection on that, instead of "
         "streaming the full container over the network during detection. Can be "
         "more stable on flaky connections; ignored for local references.",
+    )
+    parser.add_argument(
+        "--multi-segment-sync",
+        action="store_true",
+        help="Sample a few short segments spread across the reference and run "
+        "speech detection only on those, instead of the whole reference. Speeds "
+        "up long or remote references; the usual framerate and offset search is "
+        "unchanged. Only applies to video / audio references.",
+    )
+    parser.add_argument(
+        "--segment-count",
+        type=int,
+        default=8,
+        help="Number of segments to sample for --multi-segment-sync (default=8).",
+    )
+    parser.add_argument(
+        "--skip-intro-outro",
+        action="store_true",
+        help="With --multi-segment-sync, skip the first 30s and last 60s of the "
+        "reference when placing segments (intros/credits often lack dialogue).",
+    )
+    parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=4,
+        help="How many segments to extract in parallel for --multi-segment-sync "
+        "(default=4); useful for overlapping downloads of remote references.",
     )
     parser.add_argument(
         "--apply-offset-seconds",

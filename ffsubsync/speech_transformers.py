@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+from concurrent.futures import as_completed, ThreadPoolExecutor
 from contextlib import contextmanager
 import logging
 import io
@@ -582,6 +583,152 @@ class VideoSpeechTransformer(TransformerMixin):
             )
         self.video_speech_results_ = np.concatenate(media_bstring)
         logger.info("total of speech segments: %s", np.sum(self.video_speech_results_))
+
+    def transform(self, *_) -> np.ndarray:
+        return self.video_speech_results_
+
+
+class MultiSegmentVideoSpeechTransformer(TransformerMixin):
+    """Produce a reference speech signal by sampling only a few short segments.
+
+    Instead of extracting and running VAD over the entire reference, this samples
+    ``segment_count`` short windows spread across it, runs VAD on each, and places
+    the results into a full-length array that is zero everywhere else. That sparse
+    signal can be fed straight into the normal alignment path: because it preserves
+    each segment's true position on the reference timeline, the existing
+    framerate-ratio search and offset cross-correlation recover the same answer
+    they would from the full signal -- but only the sampled audio has to be
+    extracted (and, for remote URLs, downloaded). Useful for long / remote
+    references; for typical local files the plain VideoSpeechTransformer is fine.
+    """
+
+    # margins skipped at the very start/end when skip_intro_outro is set, since
+    # intros/credits often lack dialogue
+    START_MARGIN_SECONDS: int = 30
+    END_MARGIN_SECONDS: int = 60
+
+    def __init__(
+        self,
+        vad: str,
+        sample_rate: int,
+        frame_rate: int,
+        non_speech_label: float,
+        segment_count: int = 8,
+        segment_duration: int = 60,
+        skip_intro_outro: bool = False,
+        parallel_workers: int = 4,
+        ffmpeg_path: Optional[str] = None,
+        ref_stream: Optional[str] = None,
+        vlc_mode: bool = False,
+        gui_mode: bool = False,
+    ) -> None:
+        super(MultiSegmentVideoSpeechTransformer, self).__init__()
+        # sampling is audio-only, so drop any "subs_then_" prefix (embedded-subtitle
+        # extraction ignores the per-segment time window)
+        self.vad: str = vad.split("subs_then_")[-1]
+        self.sample_rate: int = sample_rate
+        self.frame_rate: int = frame_rate
+        self._non_speech_label: float = non_speech_label
+        self.segment_count: int = segment_count
+        self.segment_duration: int = segment_duration
+        self.skip_intro_outro: bool = skip_intro_outro
+        self.parallel_workers: int = parallel_workers
+        self.ffmpeg_path: Optional[str] = ffmpeg_path
+        self.ref_stream: Optional[str] = ref_stream
+        self.vlc_mode: bool = vlc_mode
+        self.gui_mode: bool = gui_mode
+        self.video_speech_results_: Optional[np.ndarray] = None
+
+    def _segment_starts(self, total_duration: float) -> List[int]:
+        """Evenly-spaced segment start times (seconds) across the reference."""
+        duration = self.segment_duration
+        if total_duration <= duration:
+            return [0]
+        start_margin = self.START_MARGIN_SECONDS if self.skip_intro_outro else 0
+        end_margin = self.END_MARGIN_SECONDS if self.skip_intro_outro else 0
+        lo = float(start_margin)
+        hi = total_duration - end_margin
+        if hi - lo < duration:  # margins too large for this reference; ignore them
+            lo, hi = 0.0, total_duration
+        usable = hi - lo - duration
+        n = max(1, self.segment_count)
+        if usable <= 0 or n == 1:
+            return [int(max(0.0, min(lo, total_duration - duration)))]
+        step = usable / (n - 1)
+        starts = [int(round(lo + i * step)) for i in range(n)]
+        # clamp into range and drop duplicates that clamping may create
+        starts = [max(0, min(s, int(total_duration) - duration)) for s in starts]
+        return sorted(set(starts))
+
+    def _extract_segment_speech(self, fname: str, start: int) -> Tuple[int, np.ndarray]:
+        """Run VAD over a single window, returning (start_seconds, speech array)."""
+        segment = VideoSpeechTransformer(
+            vad=self.vad,
+            sample_rate=self.sample_rate,
+            frame_rate=self.frame_rate,
+            non_speech_label=self._non_speech_label,
+            start_seconds=start,
+            ffmpeg_path=self.ffmpeg_path,
+            ref_stream=self.ref_stream,
+            vlc_mode=self.vlc_mode,
+            gui_mode=self.gui_mode,
+            max_duration_seconds=self.segment_duration,
+        )
+        segment.fit(fname)
+        return start, segment.transform()
+
+    def fit(self, fname: str, *_) -> "MultiSegmentVideoSpeechTransformer":
+        try:
+            total_duration = float(
+                ffmpeg.probe(
+                    fname,
+                    cmd=ffmpeg_bin_path(
+                        "ffprobe", self.gui_mode, ffmpeg_resources_path=self.ffmpeg_path
+                    ),
+                )["format"]["duration"]
+            )
+        except Exception as e:
+            raise ValueError(
+                "multi-segment sync needs the reference duration, but probing "
+                "'%s' failed: %s" % (fname, e)
+            )
+        starts = self._segment_starts(total_duration)
+        logger.info(
+            "multi-segment sync: sampling %d segment(s) of up to %ds at %s",
+            len(starts),
+            self.segment_duration,
+            [int(s) for s in starts],
+        )
+        sparse = np.zeros(int(total_duration * self.sample_rate) + 2, dtype=float)
+        workers = max(1, min(self.parallel_workers, len(starts)))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_start = {
+                executor.submit(self._extract_segment_speech, fname, start): start
+                for start in starts
+            }
+            for future in as_completed(future_to_start):
+                start = future_to_start[future]
+                try:
+                    start, seg_speech = future.result()
+                except Exception as e:
+                    # a single flaky segment shouldn't sink the whole sync; the
+                    # remaining segments still localize the offset
+                    logger.warning("failed to extract segment at %ds: %s", start, e)
+                    continue
+                begin = int(start * self.sample_rate)
+                end = min(begin + len(seg_speech), len(sparse))
+                if end > begin:
+                    sparse[begin:end] = seg_speech[: end - begin]
+        if not np.any(sparse > 0):
+            raise ValueError(
+                "Unable to detect speech in any sampled segment. "
+                "Perhaps try specifying a different stream / track, or a different vad."
+            )
+        self.video_speech_results_ = sparse
+        logger.info(
+            "total of speech segments: %s", np.sum(self.video_speech_results_)
+        )
+        return self
 
     def transform(self, *_) -> np.ndarray:
         return self.video_speech_results_

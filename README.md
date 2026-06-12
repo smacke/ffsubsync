@@ -128,6 +128,20 @@ that. It is ignored for local references and composes with
 ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt --extract-audio-first
 ~~~
 
+For long references where `--max-duration-seconds` would miss desync that only
+shows up later, `--multi-segment-sync` instead samples several short segments
+spread across the whole reference and runs speech detection on just those:
+~~~
+ffs "https://example.com/video.mp4" -i unsynchronized.srt -o synchronized.srt --multi-segment-sync
+~~~
+Only the sampled audio is extracted (and, for remote references, downloaded),
+but because each segment keeps its true position on the timeline, the usual
+framerate-ratio and offset search is unchanged—so a framerate mismatch is still
+detected and corrected. Tune it with `--segment-count N` (default 8),
+`--skip-intro-outro` (skip the first 30s / last 60s, which often lack dialogue),
+and `--parallel-workers N` (overlap segment downloads, default 4). It applies to
+video / audio references only.
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:
