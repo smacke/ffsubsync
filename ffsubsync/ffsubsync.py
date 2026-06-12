@@ -36,6 +36,7 @@ from ffsubsync.speech_transformers import (
     MultiSegmentVideoSpeechTransformer,
     DeserializeSpeechTransformer,
     PGSSpeechTransformer,
+    ProgressInfo,
     make_subtitle_speech_pipeline,
 )
 from ffsubsync.subtitle_parser import make_subtitle_parser
@@ -299,7 +300,10 @@ def try_sync(
     return sync_was_successful
 
 
-def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
+def make_reference_pipe(
+    args: argparse.Namespace,
+    progress_handler: Optional[Callable[[ProgressInfo], None]] = None,
+) -> Pipeline:
     pgs_stream = getattr(args, "pgs_ref_stream", None)
     if pgs_stream is not None:
         # "auto" (bare --pgs-ref-stream flag) → let PGSSpeechTransformer auto-detect
@@ -389,6 +393,7 @@ def make_reference_pipe(args: argparse.Namespace) -> Pipeline:
                         extract_audio_first=getattr(
                             args, "extract_audio_first", False
                         ),
+                        progress_handler=progress_handler,
                     ),
                 ),
             ]
@@ -614,7 +619,11 @@ def _npy_savename(args: argparse.Namespace) -> str:
     return os.path.splitext(args.reference)[0] + ".npz"
 
 
-def _run_impl(args: argparse.Namespace, result: Dict[str, Any]) -> bool:
+def _run_impl(
+    args: argparse.Namespace,
+    result: Dict[str, Any],
+    progress_handler: Optional[Callable[[ProgressInfo], None]] = None,
+) -> bool:
     if args.extract_subs_from_stream is not None:
         result["retval"] = extract_subtitles_from_reference(args)
         return True
@@ -623,7 +632,7 @@ def _run_impl(args: argparse.Namespace, result: Dict[str, Any]) -> bool:
         or (len(args.srtin) == 1 and args.srtin[0] == args.reference)
     ):
         return try_sync(args, None, result)
-    reference_pipe = make_reference_pipe(args)
+    reference_pipe = make_reference_pipe(args, progress_handler=progress_handler)
     logger.info("extracting speech segments from reference '%s'...", args.reference)
     reference_pipe.fit(args.reference)
     logger.info("...done")
@@ -676,7 +685,17 @@ def validate_and_transform_args(
 
 def run(
     parser_or_args: Union[argparse.ArgumentParser, argparse.Namespace],
+    progress_handler: Optional[Callable[[ProgressInfo], None]] = None,
 ) -> Dict[str, Any]:
+    """Synchronize subtitles.
+
+    ``progress_handler``, if given, is called repeatedly during reference speech
+    extraction with a :class:`~ffsubsync.speech_transformers.ProgressInfo`
+    describing how much of the reference audio has been processed. This lets a
+    host application (e.g. a web UI) display sync progress. The handler is only
+    invoked for the video-reference path; exceptions it raises are logged and
+    swallowed so a buggy handler cannot abort syncing.
+    """
     sync_was_successful = False
     result = {
         "retval": 0,
@@ -689,7 +708,9 @@ def run(
         return result
     log_path, log_handler = _setup_logging(args)
     try:
-        sync_was_successful = _run_impl(args, result)
+        sync_was_successful = _run_impl(
+            args, result, progress_handler=progress_handler
+        )
         result["sync_was_successful"] = sync_was_successful
         return result
     finally:

@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import timedelta
-from typing import cast, Callable, Dict, List, Optional, Tuple, Union
+from typing import cast, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ffmpeg
 import numpy as np
@@ -33,6 +33,24 @@ from ffsubsync.subtitle_transformers import SubtitleScaler
 
 logging.basicConfig(level=logging.INFO)
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+class ProgressInfo(NamedTuple):
+    """Progress emitted to a ``progress_handler`` during speech extraction.
+
+    ``processed_seconds`` is the amount of reference audio decoded so far and
+    ``total_seconds`` is the reference's total duration (``None`` when ffprobe
+    could not determine it). Use :attr:`fraction` for a 0.0-1.0 ratio.
+    """
+
+    processed_seconds: float
+    total_seconds: Optional[float]
+
+    @property
+    def fraction(self) -> Optional[float]:
+        if not self.total_seconds:
+            return None
+        return min(1.0, self.processed_seconds / self.total_seconds)
 
 
 def make_subtitle_speech_pipeline(
@@ -298,6 +316,7 @@ class VideoSpeechTransformer(TransformerMixin):
         gui_mode: bool = False,
         max_duration_seconds: Optional[float] = None,
         extract_audio_first: bool = False,
+        progress_handler: Optional[Callable[["ProgressInfo"], None]] = None,
     ) -> None:
         super(VideoSpeechTransformer, self).__init__()
         self.vad: str = vad
@@ -311,6 +330,9 @@ class VideoSpeechTransformer(TransformerMixin):
         self.gui_mode: bool = gui_mode
         self.max_duration_seconds: Optional[float] = max_duration_seconds
         self.extract_audio_first: bool = extract_audio_first
+        self.progress_handler: Optional[
+            Callable[["ProgressInfo"], None]
+        ] = progress_handler
         self.video_speech_results_: Optional[np.ndarray] = None
 
     def try_fit_using_embedded_subs(self, fname: str) -> None:
@@ -563,6 +585,17 @@ class VideoSpeechTransformer(TransformerMixin):
                         newstuff = total_duration - simple_progress
                     simple_progress += newstuff
                     pbar.update(newstuff)
+                    if self.progress_handler is not None:
+                        try:
+                            self.progress_handler(
+                                ProgressInfo(
+                                    processed_seconds=simple_progress,
+                                    total_seconds=total_duration,
+                                )
+                            )
+                        except Exception as e:
+                            # a host-supplied callback must never break syncing
+                            logger.warning("progress_handler raised: %s", e)
                     if self.vlc_mode and total_duration is not None:
                         print("%d" % int(simple_progress * 100.0 / total_duration))
                         sys.stdout.flush()

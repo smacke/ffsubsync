@@ -18,4 +18,5 @@ except:  # noqa: E722
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
 from .version import __version__  # noqa
-from .ffsubsync import main  # noqa
+from .ffsubsync import main, run  # noqa
+from .speech_transformers import ProgressInfo  # noqa
