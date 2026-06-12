@@ -167,6 +167,14 @@ If the sync fails, the following recourses are available:
   requires PyTorch (`pip install torch`); torch is not installed with `ffsubsync`
   by default.
 
+When syncing in bulk, a bad sync can be worse than none. Passing
+`--skip-sync-on-low-quality` leaves the subtitles unmodified when the alignment
+looks untrustworthy—an anti-correlated score (`--min-score`, default 0.0) or an
+implausibly large offset (`--quality-max-offset-seconds`, default 30). There is
+also a `--max-framerate-deviation` check (default 0.1, which permits every
+framerate correction `ffsubsync` makes); tighten it only when you know the
+framerate should not change.
+
 If the sync still fails, consider trying one of the following similar tools:
 - [sc0ty/subsync](https://github.com/sc0ty/subsync): does speech-to-text and looks for matching word morphemes
 - [kaegi/alass](https://github.com/kaegi/alass): rust-based subtitle synchronizer with a fancy dynamic programming algorithm
