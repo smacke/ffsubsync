@@ -9,92 +9,98 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
         include:
 
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             os-name: "linux"
             python-version: "3.11"
             arch: "x86_64"
-            build-deps: "pyinstaller"
 
-          - os: ubuntu-latest
+          # Native arm64 runner -- PyInstaller cannot cross-compile, so the
+          # architecture of the runner determines the architecture of the binary.
+          - os: ubuntu-24.04-arm
             os-name: "linux"
             python-version: "3.11"
             arch: "arm64"
-            build-deps: "pyinstaller"
 
-          - os: macos-latest
+          # Intel runner for the x86_64 macOS build.
+          - os: macos-15-intel
             os-name: "macos"
             python-version: "3.11"
             arch: "x86_64"
-            build-deps: "pyinstaller"
 
+          # Apple Silicon runner for the arm64 macOS build.
           - os: macos-latest
             os-name: "macos"
             python-version: "3.11"
             arch: "arm64"
-            build-deps: "pyinstaller"
 
           - os: windows-latest
             os-name: "windows"
             python-version: "3.11"
             arch: "x86_64"
-            build-deps: "pyinstaller setuptools wheel webrtcvad"
 
     steps:
     - name: Check-out repository
       uses: actions/checkout@v4
 
+    # UPX is only installed where it is known to produce working binaries.
+    # On macOS it can corrupt the (code-signed) executable, so it is skipped
+    # there and PyInstaller is invoked with --noupx below.
     - name: Install UPX (Linux)
       if: runner.os == 'Linux'
       run: sudo apt-get update && sudo apt-get install -y upx-ucl
 
-    - name: Install UPX (macOS)
-      if: runner.os == 'macOS'
-      run: brew install upx
-
     - name: Install UPX (Windows)
       if: runner.os == 'Windows'
-      run: choco install upx
-
-    - name: Prepare build requirements
-      run: echo "${{ matrix.build-deps }}" | tr ' ' '\n' > requirements-build.txt
+      run: choco install upx -y
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: pip
-        cache-dependency-path: |
-          requirements.txt
-          requirements-build.txt
+        cache-dependency-path: requirements.txt
 
     - name: Install dependencies
       run: |
-        pip install --upgrade pip
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install -r requirements-build.txt
+        pip install pyinstaller
 
     - name: Build executable with PyInstaller
+      shell: bash
       run: |
-        echo 'FFSUBSYNC_VERSION = "${{ github.event.release.tag_name }}"' > ffsubsync/__version.py
-        pyinstaller --onefile --name ffsubsync ffsubsync/ffsubsync.py
+        # The frozen binary has no git metadata, so bake the release tag in.
+        echo 'FFSUBSYNC_VERSION = "${{ github.event.release.tag_name }}"' > ffsubsync/_frozen_version.py
+        if [[ "${{ runner.os }}" == "macOS" ]]; then
+          pyinstaller --onefile --noupx --name ffsubsync ffsubsync/ffsubsync.py
+        else
+          pyinstaller --onefile --name ffsubsync ffsubsync/ffsubsync.py
+        fi
 
     - name: Smoke test
-      run: ./dist/ffsubsync --version || ./dist/ffsubsync.exe --version
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          ./dist/ffsubsync.exe --version
+        else
+          ./dist/ffsubsync --version
+        fi
 
     - name: Package binary
       shell: bash
       run: |
         cd dist
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          powershell Compress-Archive -Path ffsubsync.exe -DestinationPath "${{ matrix.os-name }}-${{ matrix.arch }}.zip"
+          7z a "${{ matrix.os-name }}-${{ matrix.arch }}.zip" ffsubsync.exe
         else
           tar -czf "${{ matrix.os-name }}-${{ matrix.arch }}.tar.gz" ffsubsync
         fi
 
     - name: Upload binaries to GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: ./dist/${{ matrix.os-name }}-${{ matrix.arch }}.*
