@@ -1,7 +1,7 @@
 FROM python:3.14-slim AS base
 
-LABEL name="subsync"
-LABEL maintainer="Peter Dave Hello"
+LABEL name="ffsubsync"
+LABEL maintainer="Stephen Macke <stephen.macke@gmail.com>"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -31,7 +31,7 @@ COPY . .
 RUN install_target="${FFSUBSYNC_VERSION:+ffsubsync==${FFSUBSYNC_VERSION}}" \
  && pip install --no-cache-dir "${install_target:-${PIP_INSTALL_TARGET}}"
 
-RUN subsync --version
+RUN ffs --version
 
 FROM base AS runtime
 
@@ -42,4 +42,4 @@ COPY --from=builder "${VIRTUAL_ENV}" "${VIRTUAL_ENV}"
 
 WORKDIR /video
 
-ENTRYPOINT [ "subsync" ]
+ENTRYPOINT [ "ffs" ]

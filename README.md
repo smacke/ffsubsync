@@ -47,18 +47,24 @@ pip install git+https://github.com/smacke/ffsubsync@latest
 
 Docker
 ------
-The repository provides a multi-stage Dockerfile that defaults to installing
-the sources from the current working tree. Build the development image with:
+Prebuilt images are published to the GitHub Container Registry. Pull the
+latest release with:
 ~~~
-docker build -t subsync .
+docker pull ghcr.io/smacke/ffsubsync:latest
 ~~~
-To install a specific version from PyPI, set `FFSUBSYNC_VERSION`:
+Run it by mounting the directory with your video and subtitles into `/video`:
 ~~~
-docker build -t subsync --build-arg FFSUBSYNC_VERSION=0.4.31 .
+docker run --rm -v "$PWD":/video ghcr.io/smacke/ffsubsync:latest \
+  video.mp4 -i unsynchronized.srt -o synchronized.srt
 ~~~
-Run the resulting image with:
+You can also build the image yourself. The multi-stage Dockerfile defaults to
+installing from the current working tree:
 ~~~
-docker run --rm -v "$PWD":/video subsync --version
+docker build -t ffsubsync .
+~~~
+To install a specific version from PyPI instead, set `FFSUBSYNC_VERSION`:
+~~~
+docker build -t ffsubsync --build-arg FFSUBSYNC_VERSION=0.4.31 .
 ~~~
 
 Usage
