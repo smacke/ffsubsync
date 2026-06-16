@@ -1,4 +1,4 @@
-name: ffsubsync
+name: ffsubsync test
 
 on: [push, pull_request]
 
