@@ -77,10 +77,15 @@ def _install_fake_popen(
     ``calls`` list.
     """
     calls = []
+    real_popen = st.subprocess.Popen
 
     def fake_popen(args, **kwargs):
+        binary = os.path.basename(str(args[0])).lower()
+        if "ffmpeg" not in binary and "ffprobe" not in binary:
+            # not one of our calls (e.g. platform.system() shelling out to
+            # ``ver`` on Windows) -- let it run for real
+            return real_popen(args, **kwargs)
         calls.append(list(args))
-        binary = os.path.basename(args[0]).lower()
         if "ffprobe" in binary:
             if probe_unavailable:
                 raise OSError("ffprobe not found")
