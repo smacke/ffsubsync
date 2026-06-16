@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import math
-from typing import List, Optional, Tuple, Type, Union
+from typing import List, Optional, Tuple, Type, Union, Dict
 
 import numpy as np
 
@@ -19,6 +19,82 @@ MAX_FRAMERATE_RATIO = 1.1
 
 class FailedToFindAlignmentException(Exception):
     pass
+
+
+def compute_weighted_median_offset(
+    segment_results: List[Dict],
+    min_score: float = 0.3,
+    max_offset_variance: float = 5.0
+) -> Tuple[float, float, List[Dict]]:
+    """Compute weighted median offset from multiple segment alignment results.
+    
+    Args:
+        segment_results: List of dicts with 'offset_seconds', 'score', 'segment_start' keys.
+        min_score: Minimum score threshold to include a segment.
+        max_offset_variance: Maximum allowed variance in offsets (seconds) before warning.
+        
+    Returns:
+        Tuple of (median_offset_seconds, combined_score, filtered_results).
+        
+    Raises:
+        FailedToFindAlignmentException: If no valid segments found.
+    """
+    # Filter segments by score
+    valid_segments = [s for s in segment_results if s.get('score', 0) >= min_score]
+    
+    if len(valid_segments) == 0:
+        # Try with lower threshold
+        valid_segments = [s for s in segment_results if s.get('score', 0) > 0]
+        if len(valid_segments) == 0:
+            raise FailedToFindAlignmentException(
+                "Multi-segment sync failed: no segments with positive score"
+            )
+        logger.warning(
+            "No segments with score >= %.2f, using %d segments with lower scores",
+            min_score, len(valid_segments)
+        )
+    
+    # Extract offsets and scores
+    offsets = np.array([s['offset_seconds'] for s in valid_segments])
+    scores = np.array([s['score'] for s in valid_segments])
+    
+    # Check variance
+    offset_variance = np.var(offsets)
+    if offset_variance > max_offset_variance:
+        logger.warning(
+            "High variance in segment offsets (%.2f): segments may have different time shifts. "
+            "Consider using single-segment sync or checking video source.",
+            offset_variance
+        )
+    
+    # Compute weighted median
+    # Sort by offset
+    sorted_indices = np.argsort(offsets)
+    sorted_offsets = offsets[sorted_indices]
+    sorted_scores = scores[sorted_indices]
+    
+    # Weighted median: find the offset where cumulative weight >= 50%
+    total_weight = np.sum(sorted_scores)
+    cumulative_weight = np.cumsum(sorted_scores)
+    median_idx = np.searchsorted(cumulative_weight, total_weight / 2)
+    median_idx = min(median_idx, len(sorted_offsets) - 1)
+    
+    median_offset = sorted_offsets[median_idx]
+    combined_score = np.mean(scores)  # Average score
+    
+    logger.info(
+        "Multi-segment sync: %d/%d valid segments, median_offset=%.3fs, avg_score=%.3f, variance=%.3f",
+        len(valid_segments), len(segment_results), median_offset, combined_score, offset_variance
+    )
+    
+    # Add detailed log
+    for s in valid_segments:
+        logger.debug(
+            "  Segment @%ds: offset=%.3fs, score=%.3f",
+            s.get('segment_start', 0), s['offset_seconds'], s['score']
+        )
+    
+    return median_offset, combined_score, valid_segments
 
 
 class FFTAligner(TransformerMixin):
@@ -52,6 +128,12 @@ class FFTAligner(TransformerMixin):
             list(map(int, s)) if isinstance(s, str) else s
             for s in [refstring, substring]
         ]
+        # Check for empty arrays before FFT
+        if len(refstring) == 0 or len(substring) == 0:
+            raise FailedToFindAlignmentException(
+                "Cannot align empty speech data (refstring=%d, substring=%d)" 
+                % (len(refstring), len(substring))
+            )
         refstring, substring = map(
             lambda s: 2 * np.array(s).astype(float) - 1, [refstring, substring]
         )
@@ -156,3 +238,90 @@ class MaxScoreAligner(TransformerMixin):
             )
         (score, offset), subpipe = max(scores, key=lambda x: x[0][0])
         return (score, offset), subpipe
+
+
+class TwoPassAligner(TransformerMixin):
+    """Two-pass alignment for improved accuracy.
+    
+    First pass: Coarse alignment with large search range
+    Second pass: Fine alignment with small search range around coarse result
+    """
+    
+    def __init__(
+        self,
+        sample_rate: int,
+        coarse_max_offset_seconds: float = 60.0,
+        fine_max_offset_seconds: float = 5.0
+    ) -> None:
+        self.sample_rate = sample_rate
+        self.coarse_max_offset_seconds = coarse_max_offset_seconds
+        self.fine_max_offset_seconds = fine_max_offset_seconds
+        self.coarse_offset_: Optional[int] = None
+        self.coarse_score_: Optional[float] = None
+        self.fine_offset_: Optional[int] = None
+        self.fine_score_: Optional[float] = None
+        self.total_offset_: Optional[int] = None
+        self.final_score_: Optional[float] = None
+    
+    def fit(self, refstring: np.ndarray, substring: np.ndarray, get_score: bool = False) -> "TwoPassAligner":
+        """Perform two-pass alignment.
+        
+        Args:
+            refstring: Reference speech signal
+            substring: Subtitle speech signal
+            get_score: Whether to return score (always True for this aligner)
+        """
+        # First pass: Coarse alignment
+        coarse_max_samples = int(self.coarse_max_offset_seconds * self.sample_rate)
+        coarse_aligner = FFTAligner(max_offset_samples=coarse_max_samples)
+        coarse_aligner.fit(refstring, substring, get_score=True)
+        self.coarse_score_, self.coarse_offset_ = coarse_aligner.transform()
+        
+        logger.info(
+            "Two-pass alignment - coarse: score=%.1f, offset=%d samples (%.2fs)",
+            self.coarse_score_, self.coarse_offset_, self.coarse_offset_ / self.sample_rate
+        )
+        
+        # Apply coarse offset to substring
+        if self.coarse_offset_ >= 0:
+            shifted_substring = np.concatenate([
+                np.zeros(self.coarse_offset_),
+                substring[:len(substring) - self.coarse_offset_] if self.coarse_offset_ < len(substring) else []
+            ])
+        else:
+            abs_offset = abs(self.coarse_offset_)
+            shifted_substring = np.concatenate([
+                substring[abs_offset:] if abs_offset < len(substring) else [],
+                np.zeros(abs_offset)
+            ])
+        
+        # Ensure shifted_substring has same length as original
+        if len(shifted_substring) < len(substring):
+            shifted_substring = np.concatenate([shifted_substring, np.zeros(len(substring) - len(shifted_substring))])
+        elif len(shifted_substring) > len(substring):
+            shifted_substring = shifted_substring[:len(substring)]
+        
+        # Second pass: Fine alignment with smaller range
+        fine_max_samples = int(self.fine_max_offset_seconds * self.sample_rate)
+        fine_aligner = FFTAligner(max_offset_samples=fine_max_samples)
+        fine_aligner.fit(refstring, shifted_substring, get_score=True)
+        self.fine_score_, self.fine_offset_ = fine_aligner.transform()
+        
+        logger.info(
+            "Two-pass alignment - fine: score=%.1f, offset=%d samples (%.2fs)",
+            self.fine_score_, self.fine_offset_, self.fine_offset_ / self.sample_rate
+        )
+        
+        # Combine offsets
+        self.total_offset_ = self.coarse_offset_ + self.fine_offset_
+        self.final_score_ = self.fine_score_
+        
+        logger.info(
+            "Two-pass alignment - total: score=%.1f, offset=%d samples (%.2fs)",
+            self.final_score_, self.total_offset_, self.total_offset_ / self.sample_rate
+        )
+        
+        return self
+    
+    def transform(self, *_) -> Tuple[float, int]:
+        return self.final_score_, self.total_offset_
