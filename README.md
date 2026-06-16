@@ -45,6 +45,28 @@ If you want to live dangerously, you can grab the latest version as follows:
 pip install git+https://github.com/smacke/ffsubsync@latest
 ~~~
 
+Docker
+------
+Prebuilt images are published to the GitHub Container Registry. Pull the
+latest release with:
+~~~
+docker pull ghcr.io/smacke/ffsubsync:latest
+~~~
+Run it by mounting the directory with your video and subtitles into `/video`:
+~~~
+docker run --rm -v "$PWD":/video ghcr.io/smacke/ffsubsync:latest \
+  video.mp4 -i unsynchronized.srt -o synchronized.srt
+~~~
+You can also build the image yourself. The multi-stage Dockerfile defaults to
+installing from the current working tree:
+~~~
+docker build -t ffsubsync .
+~~~
+To install a specific version from PyPI instead, set `FFSUBSYNC_VERSION`:
+~~~
+docker build -t ffsubsync --build-arg FFSUBSYNC_VERSION=0.4.31 .
+~~~
+
 Usage
 -----
 `ffs`, `subsync` and `ffsubsync` all work as entrypoints:
@@ -160,6 +182,18 @@ ffs video.mp4 -i sub.srt -o out.srt --frame-rate 16000
 | 48000 (default) | Baseline | Highest |
 | 16000 | ~3x faster | High (recommended minimum) |
 | 8000 | ~6x faster | Medium (may have ±0.1s error) |
+=======
+If you omit `-i`, `ffsubsync` auto-detects input subtitles sitting next to the
+reference that share its name, so you can simply run:
+~~~
+ffs video.mp4
+~~~
+This picks up files like `video.srt` and `video.en.srt` from the reference's
+directory and writes the synced result for each to a `<name>.synced.srt`
+alongside it (e.g. `video.synced.srt`), leaving the originals untouched.
+Previously-synced `*.synced.srt` outputs are skipped, so re-running is safe. Add
+`--overwrite-input` to overwrite the detected file(s) in place instead. Auto-
+detection is skipped when subtitles are piped in on stdin.
 
 Sync Issues
 -----------
