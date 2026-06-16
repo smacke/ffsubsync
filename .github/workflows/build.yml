@@ -1,8 +1,14 @@
-name: ffsubsync build
+name: Build PyInstaller Binary
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to bake into the binary and upload to (leave blank to build without uploading)"
+        required: false
+        default: ""
 
 jobs:
   build-binaries:
@@ -74,7 +80,7 @@ jobs:
       shell: bash
       run: |
         # The frozen binary has no git metadata, so bake the release tag in.
-        echo 'FFSUBSYNC_VERSION = "${{ github.event.release.tag_name }}"' > ffsubsync/_frozen_version.py
+        echo 'FFSUBSYNC_VERSION = "${{ github.event.release.tag_name || github.event.inputs.tag }}"' > ffsubsync/_frozen_version.py
         if [[ "${{ runner.os }}" == "macOS" ]]; then
           pyinstaller --onefile --noupx --name ffsubsync ffsubsync/ffsubsync.py
         else
@@ -101,6 +107,9 @@ jobs:
         fi
 
     - name: Upload binaries to GitHub Release
+      # Upload on release events, or on manual runs where a tag was supplied.
+      if: github.event_name == 'release' || github.event.inputs.tag != ''
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ github.event.release.tag_name || github.event.inputs.tag }}
         files: ./dist/${{ matrix.os-name }}-${{ matrix.arch }}.*

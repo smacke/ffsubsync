@@ -1,4 +1,4 @@
-name: ffsubsync
+name: ffsubsync CI
 
 on: [push, pull_request]
 
