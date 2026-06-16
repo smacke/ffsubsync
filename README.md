@@ -87,6 +87,18 @@ ffsubsync reference.srt -i unsynchronized.srt -o synchronized.srt
 `ffsubsync` uses the file extension to decide whether to perform voice activity
 detection on the audio or to directly extract speech from an srt file.
 
+If you omit `-i`, `ffsubsync` auto-detects input subtitles sitting next to the
+reference that share its name, so you can simply run:
+~~~
+ffs video.mp4
+~~~
+This picks up files like `video.srt` and `video.en.srt` from the reference's
+directory and writes the synced result for each to a `<name>.synced.srt`
+alongside it (e.g. `video.synced.srt`), leaving the originals untouched.
+Previously-synced `*.synced.srt` outputs are skipped, so re-running is safe. Add
+`--overwrite-input` to overwrite the detected file(s) in place instead. Auto-
+detection is skipped when subtitles are piped in on stdin.
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:

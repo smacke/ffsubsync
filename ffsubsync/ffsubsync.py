@@ -95,6 +95,20 @@ def make_test_case(
     return 0
 
 
+def _resolve_srtout(args: argparse.Namespace, srtin: Optional[str]) -> Optional[str]:
+    """Decide where the synced subtitles for ``srtin`` should be written.
+
+    Overwriting the input takes precedence; otherwise, when subtitles were
+    auto-detected from the reference, write a `<name>.synced.srt` next to each
+    input; otherwise fall back to the explicit (possibly ``None``) output.
+    """
+    if args.overwrite_input:
+        return srtin
+    if getattr(args, "auto_srtout", False) and srtin is not None:
+        return "{}.synced.srt".format(os.path.splitext(srtin)[0])
+    return args.srtout
+
+
 def get_srt_pipe_maker(
     args: argparse.Namespace, srtin: Optional[str]
 ) -> Callable[[Optional[float]], Union[Pipeline, Callable[[float], Pipeline]]]:
@@ -139,7 +153,7 @@ def try_sync(
             skip_infer_framerate_ratio = (
                 args.skip_infer_framerate_ratio or reference_pipe is None
             )
-            srtout = srtin if args.overwrite_input else args.srtout
+            srtout = _resolve_srtout(args, srtin)
             srt_pipe_maker = get_srt_pipe_maker(args, srtin)
             framerate_ratios = get_framerate_ratios_to_try(args)
             srt_pipes = [srt_pipe_maker(1.0)] + [
@@ -335,6 +349,34 @@ def extract_subtitles_from_reference(args: argparse.Namespace) -> int:
     return retcode
 
 
+def _detect_srtin_from_reference(reference: str) -> List[str]:
+    """Find subtitle files that sit next to the reference and share its name.
+
+    Matches `<reference-stem>.srt` and `<reference-stem>.<suffix>.srt` (e.g.
+    `movie.srt`, `movie.en.srt` for a `movie.mkv` reference) in the reference's
+    own directory, so detection works regardless of the process's current
+    working directory. The reference itself is never returned, so this is safe
+    even when the reference is already a subtitle file.
+    """
+    reference_dir = os.path.dirname(reference) or "."
+    reference_stem = os.path.splitext(os.path.basename(reference))[0]
+    reference_abspath = os.path.abspath(reference)
+    matches = []
+    for name in sorted(os.listdir(reference_dir)):
+        stem, ext = os.path.splitext(name)
+        if ext.lower() != ".srt":
+            continue
+        if name.endswith(".synced.srt"):
+            continue  # skip our own previously-synced outputs so re-runs are idempotent
+        if stem != reference_stem and not stem.startswith(reference_stem + "."):
+            continue
+        path = os.path.join(reference_dir, name)
+        if os.path.abspath(path) == reference_abspath:
+            continue
+        matches.append(path)
+    return matches
+
+
 def validate_args(args: argparse.Namespace) -> None:
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
@@ -359,17 +401,35 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("cannot specify multiple input srt files for test cases")
         if len(args.srtin) > 1 and args.gui_mode:
             raise ValueError("cannot specify multiple input srt files in GUI mode")
-    else:
-        logger.info("No input srt specified; automatically detecting input str")
-        reference_base = os.path.splitext(args.reference)[0]
-        matching_files = [file for file in os.listdir() if file.startswith(reference_base) and file.endswith('.srt')]
-        if not matching_files:
-            raise ValueError("No matching input srt files found for reference.")
+    elif (
+        args.reference is not None
+        and args.extract_subs_from_stream is None
+        and not args.gui_mode
+        and not args.make_test_case
+        and sys.stdin.isatty()  # don't hijack subtitles piped in on stdin
+    ):
+        # No input subtitles were given (and nothing is piped in), so look for
+        # subtitle files alongside the reference that share its name.
+        logger.info("no input srt specified; detecting input srt from reference")
+        detected = _detect_srtin_from_reference(args.reference)
+        if detected:
+            for path in detected:
+                logger.info("detected input srt: %s", path)
+            args.srtin = detected
+            if len(detected) > 1 and args.srtout is not None:
+                raise ValueError(
+                    "detected multiple input srt files but an output file was "
+                    "specified; re-run with --overwrite-input or a single input"
+                )
+            if args.srtout is None and not args.overwrite_input:
+                args.auto_srtout = True
+                logger.info(
+                    "writing synced output alongside each input as "
+                    "<name>.synced.srt; pass --overwrite-input to overwrite the "
+                    "input file(s) in place instead"
+                )
         else:
-            args.srtin = matching_files
-            args.overwrite_input = True
-            for file in matching_files:
-                logger.info("Detected input srt: %s", file)
+            logger.info("no input srt detected from reference")
     if (
         args.make_test_case and not args.gui_mode
     ):  # this validation not necessary for gui mode
@@ -557,7 +617,16 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
-        "-i", "--srtin", nargs="*", help="Input subtitles file (default=stdin)."
+        "-i",
+        "--srtin",
+        nargs="*",
+        help=(
+            "Input subtitles file (default=stdin). If omitted (and nothing is "
+            "piped in), subtitles sharing the reference's name in its directory "
+            "are auto-detected (e.g. `movie.srt`, `movie.en.srt` for `movie.mkv`) "
+            "and each is synced to a `<name>.synced.srt` next to it; pass "
+            "--overwrite-input to overwrite the detected file(s) in place."
+        ),
     )
     parser.add_argument(
         "-o", "--srtout", help="Output subtitles file (default=stdout)."

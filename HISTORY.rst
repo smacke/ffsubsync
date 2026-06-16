@@ -1,6 +1,10 @@
 History
 =======
 
+0.4.33 (2026-06-11)
+-------------------
+* Auto-detect input subtitles from the reference's name when ``-i`` is omitted, syncing each to a ``<name>.synced.srt`` (or in place with ``--overwrite-input``);
+
 0.4.32 (2026-05-24)
 ----------
 * Use webrtcvad-wheels on all platforms and remove the runtime setuptools dependency;
