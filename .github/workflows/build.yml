@@ -100,10 +100,25 @@ jobs:
         cache-dependency-path: requirements.txt
 
     - name: Install dependencies
+      shell: bash
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+        # webrtcvad-wheels installs the `webrtcvad` module under the distribution
+        # name `webrtcvad-wheels`, but PyInstaller's contrib hook hardcodes
+        # copy_metadata('webrtcvad') and aborts the build when that lookup fails.
+        # Alias the metadata under the `webrtcvad` name so the hook resolves it.
+        python - <<'PY'
+        import importlib.metadata as md
+        import shutil
+        dist = md.distribution("webrtcvad-wheels")
+        info = dist._path
+        alias = info.with_name("webrtcvad-%s.dist-info" % dist.version)
+        if not alias.exists():
+            shutil.copytree(info, alias)
+            print("created metadata alias:", alias)
+        PY
 
     - name: Build executable with PyInstaller
       shell: bash
