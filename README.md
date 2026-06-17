@@ -1,7 +1,7 @@
 FFsubsync
 =======
 
-[![CI Status](https://github.com/smacke/ffsubsync/workflows/ffsubsync/badge.svg)](https://github.com/smacke/ffsubsync/actions/workflows/ci.yml)
+[![CI Status](https://github.com/smacke/ffsubsync/actions/workflows/ci.yml/badge.svg)](https://github.com/smacke/ffsubsync/actions/workflows/ci.yml)
 [![Support Ukraine](https://badgen.net/badge/support/UKRAINE/?color=0057B8&labelColor=FFD700)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
 [![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
