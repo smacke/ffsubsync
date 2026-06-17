@@ -1,9 +1,21 @@
 History
 =======
 
-0.4.33 (2026-06-11)
--------------------
+0.5.0 (2026-06-16)
+------------------
 * Auto-detect input subtitles from the reference's name when ``-i`` is omitted, syncing each to a ``<name>.synced.srt`` (or in place with ``--overwrite-input``);
+* Support remote URL references for both video/audio and subtitles;
+* Add ``--extract-audio-first`` to copy a remote reference's audio locally before syncing;
+* Add ``--max-duration-seconds`` to cap how much of the reference is processed;
+* Add ``--vad=fused`` to combine webrtc and silero voice activity detection (silero/torch remain optional, installable via the ``ffsubsync[torch]`` extra);
+* Add ``--multi-segment-sync`` (with ``--segment-count``, ``--skip-intro-outro``, and ``--parallel-workers``) to align using a sparse, sampled reference signal while preserving framerate-ratio correction;
+* Add ``--skip-sync-on-low-quality`` safety net (with ``--min-score``, ``--quality-max-offset-seconds``, and ``--max-framerate-deviation``) to write the original subtitles when an alignment looks untrustworthy;
+* Use PGS subtitle streams as a reference, with automatic PGS stream detection (``--pgs-ref-stream``);
+* Recognize more non-dialogue cues (music symbols, markup-wrapped cues, CJK brackets) when building the speech signal;
+* Add a ``progress_handler`` callback to expose sync progress (#224);
+* Extract all embedded subtitles in a single ffmpeg pass;
+* Add a Dockerfile for running ffsubsync in a container (#68);
+* Guard the FFT aligner against empty speech input;
 
 0.4.32 (2026-05-24)
 ----------

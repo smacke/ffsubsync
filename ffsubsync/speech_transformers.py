@@ -191,7 +191,8 @@ def _make_silero_detector(
     except ImportError as e:
         logger.error(
             "Error: the silero VAD requires PyTorch, which is not installed!\n"
-            "        Install it with `pip install torch` (see https://pytorch.org\n"
+            "        Install it with `pip install ffsubsync[torch]`, or install\n"
+            "        torch directly with `pip install torch` (see https://pytorch.org\n"
             "        for platform-specific instructions). torch is an optional\n"
             "        dependency and is not installed with ffsubsync by default."
         )

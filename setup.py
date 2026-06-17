@@ -33,6 +33,10 @@ setup(
     packages=find_packages(exclude=['docs']),
     include_package_data=True,
     install_requires=requirements,
+    extras_require={
+        # Optional dependency for the silero / fused VAD backends.
+        'torch': ['torch'],
+    },
     entry_points={
         'console_scripts': [
             'ffs = ffsubsync:main',

@@ -3,12 +3,17 @@ name: Build PyInstaller Binary
 on:
   release:
     types: [published]
+  # The build target is whatever ref you pick in the "Use workflow from"
+  # dropdown: the run both executes that ref's copy of this workflow and builds
+  # its source. Pick a version tag (e.g. 0.5.0) to bake/upload that release, or a
+  # branch to test-build it.
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag to bake into the binary and upload to (leave blank to build without uploading)"
+      upload_to_release:
+        description: "Upload to the release for the selected ref (only when it is a version tag)"
+        type: boolean
         required: false
-        default: ""
+        default: false
 
 jobs:
   build-binaries:
@@ -49,8 +54,32 @@ jobs:
             arch: "x86_64"
 
     steps:
+    # Default checkout uses the launched ref: the release tag on release events,
+    # or the ref chosen in "Use workflow from" on manual runs.
     - name: Check-out repository
       uses: actions/checkout@v4
+
+    - name: Resolve build parameters
+      id: params
+      shell: bash
+      run: |
+        version="${{ github.ref_name }}"
+        if [[ "${{ github.event_name }}" == "release" ]]; then
+          upload="true"
+        else
+          upload="${{ github.event.inputs.upload_to_release }}"
+        fi
+        is_version_tag=false
+        if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          is_version_tag=true
+        fi
+        # Only upload to a release when the build target is an actual version tag.
+        if [[ "$upload" == "true" && "$is_version_tag" != "true" ]]; then
+          echo "::notice::'$version' is not a version tag; building without uploading."
+          upload="false"
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "upload=$upload" >> "$GITHUB_OUTPUT"
 
     # UPX is only installed where it is known to produce working binaries.
     # On macOS it can corrupt the (code-signed) executable, so it is skipped
@@ -79,8 +108,8 @@ jobs:
     - name: Build executable with PyInstaller
       shell: bash
       run: |
-        # The frozen binary has no git metadata, so bake the release tag in.
-        echo 'FFSUBSYNC_VERSION = "${{ github.event.release.tag_name || github.event.inputs.tag }}"' > ffsubsync/_frozen_version.py
+        # The frozen binary has no git metadata, so bake the resolved version in.
+        echo 'FFSUBSYNC_VERSION = "${{ steps.params.outputs.version }}"' > ffsubsync/_frozen_version.py
         if [[ "${{ runner.os }}" == "macOS" ]]; then
           pyinstaller --onefile --noupx --name ffsubsync ffsubsync/ffsubsync.py
         else
@@ -107,9 +136,10 @@ jobs:
         fi
 
     - name: Upload binaries to GitHub Release
-      # Upload on release events, or on manual runs where a tag was supplied.
-      if: github.event_name == 'release' || github.event.inputs.tag != ''
+      # Upload on release events, or on manual runs that opted in for a version tag.
+      # action-gh-release overwrites same-named assets, so re-runs replace prior uploads.
+      if: steps.params.outputs.upload == 'true'
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+        tag_name: ${{ steps.params.outputs.version }}
         files: ./dist/${{ matrix.os-name }}-${{ matrix.arch }}.*

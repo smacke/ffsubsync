@@ -188,8 +188,8 @@ If the sync fails, the following recourses are available:
   (conservative -- speech only where both agree), `--vad=fused:union`
   (aggressive -- speech where either fires), or `--vad=fused:weighted` (the
   default). These options require the optional silero dependency, which itself
-  requires PyTorch (`pip install torch`); torch is not installed with `ffsubsync`
-  by default.
+  requires PyTorch; install both with `pip install ffsubsync[torch]` (or just
+  `pip install torch`). torch is not installed with `ffsubsync` by default.
 
 When syncing in bulk, a bad sync can be worse than none. Passing
 `--skip-sync-on-low-quality` leaves the subtitles unmodified when the alignment

@@ -4,12 +4,12 @@ on:
   push:
     # Release tags are bare semver, e.g. 0.4.32
     tags: [ '[0-9]+.[0-9]+.[0-9]+' ]
+  # The build target is whatever ref you pick in the "Use workflow from"
+  # dropdown: the run both executes that ref's copy of this workflow and builds
+  # its source. Pick a version tag (e.g. 0.5.0) to tag the image accordingly, or
+  # a branch to build under that branch name.
   workflow_dispatch:
     inputs:
-      ffsubsync_version:
-        description: 'PyPI version to build (leave blank to build from the checked-out tree)'
-        required: false
-        default: ''
       push_image:
         description: 'Push the built image to ghcr (off = build-only test)'
         type: boolean
@@ -28,11 +28,33 @@ jobs:
       packages: write
 
     steps:
+    # Default checkout uses the launched ref: the pushed tag on tag events, or
+    # the ref chosen in "Use workflow from" on manual runs.
     - name: Checkout
       uses: actions/checkout@v4
       with:
         # versioneer needs full history/tags to compute the version
         fetch-depth: 0
+
+    - name: Resolve build parameters
+      id: params
+      shell: bash
+      run: |
+        version="${{ github.ref_name }}"
+        if [[ "${{ github.event_name }}" == "push" ]]; then
+          push="true"
+        else
+          push="${{ github.event.inputs.push_image }}"
+        fi
+        is_version_tag=false
+        if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          is_version_tag=true
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "push=$push" >> "$GITHUB_OUTPUT"
+        echo "is_version_tag=$is_version_tag" >> "$GITHUB_OUTPUT"
+        # Branch names aren't valid Docker tags if they contain '/'.
+        echo "safe_tag=${version//\//-}" >> "$GITHUB_OUTPUT"
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
@@ -52,23 +74,25 @@ jobs:
       uses: docker/metadata-action@v5
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        # Tags derive from the resolved build target, not the workflow ref:
+        #   version tag -> {{version}}, {{major}}.{{minor}}, and latest
+        #   branch      -> the (sanitized) branch name only
         tags: |
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=raw,value=latest,enable={{is_default_branch}}
-          type=ref,event=tag
+          type=semver,pattern={{version}},value=${{ steps.params.outputs.version }}
+          type=semver,pattern={{major}}.{{minor}},value=${{ steps.params.outputs.version }}
+          type=raw,value=latest,enable=${{ steps.params.outputs.is_version_tag == 'true' }}
+          type=raw,value=${{ steps.params.outputs.safe_tag }},enable=${{ steps.params.outputs.is_version_tag != 'true' }}
 
     - name: Build and push
       uses: docker/build-push-action@v6
       with:
         context: .
         platforms: linux/amd64,linux/arm64
-        # Build-only on manual runs unless push_image is explicitly enabled;
-        # always push on tag releases.
-        push: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.push_image == 'true' }}
+        # Build-only on manual runs unless push_image is enabled; always push on
+        # tag releases. Re-pushing an existing tag overwrites it in the registry.
+        push: ${{ steps.params.outputs.push == 'true' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        build-args: |
-          FFSUBSYNC_VERSION=${{ github.event.inputs.ffsubsync_version }}
+        # Build straight from the checked-out ref's source (no PyPI install).
         cache-from: type=gha
         cache-to: type=gha,mode=max
