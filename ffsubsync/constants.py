@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 from typing import List, Optional, Tuple
 
 
@@ -55,6 +56,29 @@ VAD_CHOICES: Tuple[str, ...] = (
     "fused:intersection",
     "fused:union",
 )
+
+# The auditok detector additionally accepts a parameter after a colon (also
+# with a "subs_then_" prefix): a number is a fixed energy threshold in dB
+# ("auditok:50" reproduces the historical behavior), "auto"/"otsu" estimate
+# the threshold from the audio itself (bare "auditok" is an alias for
+# "auditok:auto"), "pXX" places it at the XXth percentile of window energies,
+# and "webrtc[:N]" runs auditok's event segmentation over WebRTC VAD frame
+# decisions (N = aggressiveness, 0-3). These parameterized forms cannot be
+# enumerated in VAD_CHOICES, hence the regex + helper used by validate_args.
+_AUDITOK_SPEC_RE = re.compile(
+    r"^(auto|otsu|percentile|p[1-9][0-9]?|webrtc(:[0-3])?|[0-9]+(\.[0-9]+)?)$"
+)
+
+
+def is_valid_vad(vad: str) -> bool:
+    """Return True if *vad* is a valid --vad value, including the
+    parameterized ``auditok:<spec>`` forms."""
+    if vad in VAD_CHOICES:
+        return True
+    base = vad[len("subs_then_") :] if vad.startswith("subs_then_") else vad
+    if base.startswith("auditok:"):
+        return _AUDITOK_SPEC_RE.match(base[len("auditok:") :]) is not None
+    return False
 
 # ffmpeg's whisper audio filter (a reference source alternative to audio VAD;
 # see WhisperSpeechTransformer). "auto" lets whisper detect the language; the

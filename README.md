@@ -235,9 +235,11 @@ If the sync fails, the following recourses are available:
   for the full story.
 - Try `--vad=auditok` since [auditok](https://github.com/amsehili/auditok) can
   sometimes work better in the case of low-quality audio than WebRTC's VAD.
-  Auditok does not specifically detect voice, but instead detects all audio;
-  this property can yield suboptimal syncing behavior when a proper VAD can
-  work well, but can be effective in some cases.
+  auditok can use energy (detect all audio; the threshold is found
+  automatically with otsu, `auditok:pXX` uses the XXth percentile instead
+  with XX in 1-99, `auditok:50` is the historical fixed threshold) or a
+  speech model (`auditok:webrtc[:N]`, N = aggressiveness 0-3: targets speech
+  only, but expect false positives).
 - Try `--vad=fused`, which combines WebRTC with the neural
   [silero](https://github.com/snakers4/silero-vad) VAD and can be more robust on
   noisy audio. The strategy can be tuned: `--vad=fused:intersection`

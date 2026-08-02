@@ -32,6 +32,7 @@ from ffsubsync.constants import (
     DEFAULT_MAX_FRAMERATE_DEVIATION,
     VAD_CHOICES,
     is_remote_url,
+    is_valid_vad,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
 from ffsubsync.sklearn_shim import Pipeline, TransformerMixin
@@ -569,9 +570,11 @@ def validate_args(args: argparse.Namespace) -> None:
     # --vad no longer uses argparse `choices` (in whisper mode it carries a model
     # path), so enforce the named-detector choices here when not in whisper mode.
     if getattr(args, "whisper_weights", None) is None and args.vad is not None:
-        if args.vad not in VAD_CHOICES:
+        if not is_valid_vad(args.vad):
             raise ValueError(
-                "invalid --vad {!r}; choose one of: {}".format(
+                "invalid --vad {!r}; choose one of: {} (auditok also accepts "
+                "a parameter, e.g. auditok:75, auditok:p20 or "
+                "auditok:webrtc:2 -- see --help)".format(
                     args.vad, ", ".join(VAD_CHOICES)
                 )
             )
@@ -1097,9 +1100,13 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         help="Which voice activity detector to use for speech extraction "
         "(if using video / audio as a reference, default={default}). Choices: "
         "{choices}. The `fused` options combine webrtc and silero and require the "
-        "optional silero dependency (torch). With --whisper-weights this instead "
-        "takes a path to a ggml VAD model for whisper's optional audio "
-        "fragmentation.".format(
+        "optional silero dependency (torch). `auditok` can use energy (detect all "
+        "audio; the threshold is found automatically with otsu, `auditok:pXX` "
+        "uses the XXth percentile instead with XX in 1-99, `auditok:50` is the "
+        "historical fixed threshold) or a speech model (`auditok:webrtc[:N]`, "
+        "N = aggressiveness 0-3: targets speech only, but expect false "
+        "positives). With --whisper-weights this instead takes a path to a ggml "
+        "VAD model for whisper's optional audio fragmentation.".format(
             default=DEFAULT_VAD, choices=", ".join(VAD_CHOICES)
         ),
     )
