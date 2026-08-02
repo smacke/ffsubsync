@@ -33,6 +33,7 @@ setup(
     packages=find_packages(exclude=['docs']),
     include_package_data=True,
     install_requires=requirements,
+    python_requires='>=3.8',
     extras_require={
         # Optional dependency for the silero / fused VAD backends.
         'torch': ['torch'],
@@ -51,8 +52,6 @@ setup(
         'Intended Audience :: End Users/Desktop',
         'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',

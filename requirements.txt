@@ -1,11 +1,10 @@
-auditok==0.1.5
+auditok>=0.5.2
 chardet;python_version>='3.7'
 charset_normalizer
 faust-cchardet
 ffmpeg-python
 numpy>=1.12.0
-pysubs2;python_version<'3.7'
-pysubs2>=1.2.0;python_version>='3.7'
+pysubs2>=1.2.0
 rich
 srt>=3.0.0
 tqdm

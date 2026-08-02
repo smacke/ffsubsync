@@ -24,6 +24,7 @@ from ffsubsync.ffsubsync import make_parser, run
 from ffsubsync.speech_transformers import (
     _make_auditok_detector,
     _make_webrtcvad_detector,
+    _parse_auditok_spec,
 )
 
 _WORK_DIR = "/work"
@@ -155,13 +156,23 @@ def _pcm_to_speech_signal(pcm: bytes, frame_rate: int, vad: str,
     chunk to the same detector, then concatenate. ``frame_rate`` is the PCM sample
     rate; for webrtcvad it must be one of 8000/16000/32000/48000 Hz.
     """
-    maker = _DETECTOR_MAKERS.get(vad)
-    if maker is None:
-        raise ValueError(
-            "unsupported browser vad %r; expected one of %s"
-            % (vad, ", ".join(sorted(_DETECTOR_MAKERS)))
+    if vad.startswith("auditok"):
+        # supports the parameterized forms too ("auditok:75", "auditok:pXX",
+        # "auditok:webrtc[:N]"); bare "auditok" auto-estimates the threshold
+        detector = _make_auditok_detector(
+            SAMPLE_RATE,
+            frame_rate,
+            non_speech_label,
+            vad_spec=_parse_auditok_spec(vad),
         )
-    detector = maker(SAMPLE_RATE, frame_rate, non_speech_label)
+    else:
+        maker = _DETECTOR_MAKERS.get(vad)
+        if maker is None:
+            raise ValueError(
+                "unsupported browser vad %r; expected one of %s"
+                % (vad, ", ".join(sorted(_DETECTOR_MAKERS)))
+            )
+        detector = maker(SAMPLE_RATE, frame_rate, non_speech_label)
 
     bytes_per_frame = 2
     frames_per_window = bytes_per_frame * frame_rate // SAMPLE_RATE

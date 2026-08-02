@@ -101,56 +101,88 @@ def make_subtitle_speech_pipeline(
         return subpipe_maker(scale_factor)
 
 
+def _parse_auditok_spec(vad: str) -> str:
+    """Extract the parameter from an ``auditok[:spec]`` vad name (with or
+    without a ``subs_then_`` prefix). Bare ``auditok`` means ``auto``."""
+    base = vad.split("subs_then_")[-1]
+    return base.split(":", 1)[1] if ":" in base else "auto"
+
+
 def _make_auditok_detector(
-    sample_rate: int, frame_rate: int, non_speech_label: float
+    sample_rate: int,
+    frame_rate: int,
+    non_speech_label: float,
+    vad_spec: str = "auto",
 ) -> Callable[[bytes], np.ndarray]:
     try:
-        from auditok import (
-            BufferAudioSource,
-            ADSFactory,
-            AudioEnergyValidator,
-            StreamTokenizer,
-        )
+        import auditok
     except ImportError as e:
         logger.error(
-            """Error: auditok not installed!
-        Consider installing it with `pip install auditok`. Note that auditok
-        is GPLv3 licensed, which means that successfully importing it at
-        runtime creates a derivative work that is GPLv3 licensed. For personal
-        use this is fine, but note that any commercial use that relies on
-        auditok must be open source as per the GPLv3!*
-        *Not legal advice. Consult with a lawyer.
-        """
+            "Error: auditok not installed!\n"
+            "        Consider installing it with `pip install auditok` "
+            "(MIT-licensed since v0.2)."
         )
         raise e
+    if vad_spec.startswith("webrtc"):
+        try:
+            import webrtcvad  # noqa: F401
+        except ImportError as e:
+            logger.error(
+                "Error: the auditok:webrtc detector requires the webrtcvad "
+                "package (`pip install webrtcvad-wheels`)."
+            )
+            raise e
+    # A numeric spec is a fixed energy threshold in dB on auditok's scale
+    # (the historical hard-coded value was 50); anything else ("otsu",
+    # "pXX", "webrtc[:N]") is an auditok validator spec. "auto" is otsu,
+    # auditok's default estimation method; estimation runs per chunk
+    # (~100 s), so the threshold adapts across the reference.
+    if vad_spec == "auto":
+        vad_spec = "otsu"
+    try:
+        threshold_kwargs = {"energy_threshold": float(vad_spec)}
+    except ValueError:
+        threshold_kwargs = {"validator": vad_spec}
+    # threshold estimation degenerates on silent chunks (see the guard in
+    # _detect); fixed thresholds and the webrtc backend need no guard
+    estimates_threshold = "validator" in threshold_kwargs and not vad_spec.startswith(
+        "webrtc"
+    )
     bytes_per_frame = 2
     frames_per_window = frame_rate // sample_rate
-    validator = AudioEnergyValidator(sample_width=bytes_per_frame, energy_threshold=50)
-    tokenizer = StreamTokenizer(
-        validator=validator,
-        min_length=0.2 * sample_rate,
-        max_length=int(5 * sample_rate),
-        max_continuous_silence=0.25 * sample_rate,
-    )
 
-    def _detect(asegment: bytes) -> np.ndarray:
-        asource = BufferAudioSource(
-            data_buffer=asegment,
-            sampling_rate=frame_rate,
-            sample_width=bytes_per_frame,
-            channels=1,
-        )
-        ads = ADSFactory.ads(audio_source=asource, block_dur=1.0 / sample_rate)
-        ads.open()
-        tokens = tokenizer.tokenize(ads)
+    def _detect(asegment) -> np.ndarray:
+        if isinstance(asegment, np.ndarray):
+            asegment = asegment.tobytes()
         length = (
             len(asegment) // bytes_per_frame + frames_per_window - 1
         ) // frames_per_window
-        media_bstring = np.zeros(length + 1)
-        for token in tokens:
-            media_bstring[token[1]] = 1.0
-            media_bstring[token[2] + 1] = non_speech_label - 1.0
-        return np.clip(np.cumsum(media_bstring)[:-1], 0.0, 1.0)
+        media_bstring = np.full(length, non_speech_label)
+        # auditok >= 0.5.1 yields no events when estimating on digitally
+        # silent input, but a *near*-silent chunk -- e.g. a dithered black
+        # leader or credits -- still has no usable energy distribution, and
+        # an estimated threshold can mark the whole chunk as speech. 25 dB
+        # on auditok's scale (peak ~ -65 dBFS) is far below any speech.
+        if estimates_threshold:
+            peak = np.abs(np.frombuffer(asegment, np.int16)).max(initial=1)
+            if 20 * np.log10(peak) < 25.0:
+                return media_bstring
+        events = auditok.split(
+            asegment,
+            sampling_rate=frame_rate,
+            sample_width=bytes_per_frame,
+            channels=1,
+            analysis_window=1.0 / sample_rate,
+            min_dur=0.2,
+            max_dur=5,
+            max_silence=0.25,
+            **threshold_kwargs,
+        )
+        for event in events:
+            start = int(event.start * sample_rate)
+            end = min(int(round(event.end * sample_rate)), length)
+            media_bstring[start:end] = 1.0
+        return media_bstring
 
     return _detect
 
@@ -672,12 +704,17 @@ class VideoSpeechTransformer(TransformerMixin):
                 self._non_speech_label,
                 fusion_strategy,
             )
+        elif "auditok" in self.vad:
+            # NB: checked before webrtc -- "auditok:webrtc:N" selects auditok's
+            # event segmentation over webrtc frame decisions, not plain webrtc
+            detector = _make_auditok_detector(
+                self.sample_rate,
+                self.frame_rate,
+                self._non_speech_label,
+                vad_spec=_parse_auditok_spec(self.vad),
+            )
         elif "webrtc" in self.vad:
             detector = _make_webrtcvad_detector(
-                self.sample_rate, self.frame_rate, self._non_speech_label
-            )
-        elif "auditok" in self.vad:
-            detector = _make_auditok_detector(
                 self.sample_rate, self.frame_rate, self._non_speech_label
             )
         elif "silero" in self.vad:
