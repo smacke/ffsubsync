@@ -1053,6 +1053,14 @@ def find_pgs_stream(
     return None
 
 
+# PGS "clear" (display-clear) packets are tiny, fixed-size segments (~30
+# bytes in practice); "show" packets that carry an actual bitmap are always
+# far larger. This threshold now drives both the SHOW/CLEAR classification
+# used for pairing below *and* the original size-based filtering, so it is
+# named rather than inlined.
+_PGS_CLEAR_EVENT_MAX_SIZE_BYTES: int = 50
+
+
 def _get_pgs_timings_via_ffprobe(
     fname: str,
     stream: str,
@@ -1061,13 +1069,39 @@ def _get_pgs_timings_via_ffprobe(
 ) -> Optional[List[Tuple[float, float]]]:
     """Read PGS timings from container metadata using ffprobe.
 
-    MKV stores per-packet PTS and duration for subtitle streams, so we can
-    get start/end timestamps without extracting or parsing the raw SUP binary.
-    Show events are large packets with a numeric ``duration_time``; clear events
-    are tiny (~30-byte) packets with ``duration_time=N/A``.
+    MKV stores per-packet PTS (and sometimes duration) for subtitle streams,
+    so we can usually get start/end timestamps without extracting or parsing
+    the raw SUP binary. A packet is classified as a "show" event (it carries
+    a bitmap) if its size is greater than ``_PGS_CLEAR_EVENT_MAX_SIZE_BYTES``,
+    or a "clear" event (a tiny, ~30-byte, display-clear segment with no
+    image) otherwise. Depending on how the file was muxed, two different
+    representations of a caption's on-screen interval are seen in the wild,
+    and both are supported here in a single forward pass over the (already
+    pts-ordered) packet list:
 
-    Returns a list of ``(start_seconds, end_seconds)`` tuples, or ``None`` if
-    ffprobe fails or returns no usable durations.
+    1. **Numeric duration** (typical case): a show packet carries its own
+       numeric ``duration_time``, and the interval is
+       ``(pts_time, pts_time + duration_time)`` taken directly from that
+       packet, as before.
+    2. **N/A duration, paired with a clear packet** (seen from some
+       encoders -- e.g. some remuxes report an unavailable ``duration_time``
+       for *every* PGS packet): a show packet's ``duration_time`` is
+       unavailable. Its end time instead comes from the ``pts_time`` of the
+       next clear packet that follows it. At most one such pending show is
+       tracked at a time; if a new show packet (of either representation)
+       arrives before a clear packet closes the pending one, the pending one
+       is discarded -- its end time is never guessed. Likewise, a show
+       packet that is never closed by a clear packet before end-of-stream is
+       dropped.
+
+       ``ffprobe``'s ``-of json`` writer (used here, via ``ffmpeg.probe``)
+       represents "unavailable" by omitting the ``duration_time`` key from
+       the packet object entirely, rather than emitting the string
+       ``"N/A"`` the way its text-based writers (default/compact/csv) do.
+       Both spellings are treated identically below.
+
+    Returns a list of ``(start_seconds, end_seconds)`` tuples, or ``None``
+    if ffprobe fails or no packet pairing produces a usable interval.
     """
     ffprobe_cmd = ffmpeg_bin_path(
         "ffprobe", gui_mode, ffmpeg_resources_path=ffmpeg_path
@@ -1087,22 +1121,54 @@ def _get_pgs_timings_via_ffprobe(
         return None
 
     results: List[Tuple[float, float]] = []
+    # pts_time of a show packet whose duration_time was "N/A", still
+    # awaiting a clear packet to close it. At most one is tracked at a time:
+    # a new show packet (of either representation) discards whatever was
+    # previously pending rather than carrying it forward or guessing.
+    pending_show_pts: Optional[float] = None
+
     for packet in probe_data.get("packets", []):
         pts_time_str = packet.get("pts_time")
-        duration_time_str = packet.get("duration_time")
+        # ffprobe's JSON writer omits duration_time entirely when it's
+        # unavailable (rather than writing "N/A", as its text writers do),
+        # so a missing key and an explicit "N/A" both mean the same thing
+        # here: fall through to the show/clear pairing path below.
+        duration_time_str = packet.get("duration_time", "N/A")
         size_str = packet.get("size")
-        if pts_time_str is None or duration_time_str is None or size_str is None:
-            continue
-        if duration_time_str == "N/A":
+        if pts_time_str is None or size_str is None:
             continue
         try:
             pts_time = float(pts_time_str)
-            duration_time = float(duration_time_str)
             size = int(size_str)
         except ValueError:
             continue
-        if size > 50:  # skip clear events (~30 bytes)
-            results.append((pts_time, pts_time + duration_time))
+
+        if size <= _PGS_CLEAR_EVENT_MAX_SIZE_BYTES:
+            # Clear event: never produces an interval of its own. Its only
+            # role is to close a pending N/A-duration show, if any. Its own
+            # duration_time (N/A or numeric) is irrelevant and deliberately
+            # not parsed.
+            if pending_show_pts is not None:
+                results.append((pending_show_pts, pts_time))
+                pending_show_pts = None
+            continue
+
+        # Show event.
+        if duration_time_str == "N/A":
+            # Becomes the new pending show, superseding (discarding) any
+            # earlier pending show that was never closed by a clear packet.
+            pending_show_pts = pts_time
+            continue
+
+        try:
+            duration_time = float(duration_time_str)
+        except ValueError:
+            continue
+
+        # A numeric-duration show also supersedes any still-pending
+        # N/A-duration show from earlier in the stream.
+        pending_show_pts = None
+        results.append((pts_time, pts_time + duration_time))
 
     if not results:
         return None
@@ -1120,11 +1186,15 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
     or parsing the raw SUP/PCS binary at all.
 
     This transformer reads those per-packet timings via ``ffprobe`` (see
-    :func:`_get_pgs_timings_via_ffprobe`), filtering out the tiny "clear" packets
-    that carry no image, and builds the same kind of sparse binary speech signal
-    that :class:`SubtitleSpeechTransformer` produces for text subtitles: 1.0 while
-    a caption is displayed, 0.0 otherwise. That signal can then be aligned against
-    the input subtitle file by the normal ffsubsync pipeline.
+    :func:`_get_pgs_timings_via_ffprobe`). Depending on how the file was muxed, a
+    caption's end time comes either directly from its own packet's numeric
+    duration, or -- for encoders that report ``duration_time=N/A`` for every
+    packet -- from the pts_time of the tiny "clear" packet that follows it and
+    marks when the image is taken back off screen. Either way, the result is the
+    same kind of sparse binary speech signal that :class:`SubtitleSpeechTransformer`
+    produces for text subtitles: 1.0 while a caption is displayed, 0.0 otherwise.
+    That signal can then be aligned against the input subtitle file by the normal
+    ffsubsync pipeline.
 
     The reference stream may be given explicitly via ``ref_stream`` (with or
     without a leading ``0:``), or left as ``None`` to auto-detect the first
