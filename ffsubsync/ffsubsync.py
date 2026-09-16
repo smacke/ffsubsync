@@ -16,6 +16,7 @@ from ffsubsync.constants import (
     DEFAULT_APPLY_OFFSET_SECONDS,
     DEFAULT_FRAME_RATE,
     DEFAULT_MAX_OFFSET_SECONDS,
+    DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES,
     DEFAULT_MAX_SUBTITLE_SECONDS,
     DEFAULT_NON_SPEECH_LABEL,
     DEFAULT_SPLIT_PENALTY,
@@ -481,6 +482,11 @@ def make_reference_pipe(
                         ),
                         extract_audio_first=getattr(
                             args, "extract_audio_first", False
+                        ),
+                        min_embedded_subtitle_cues=getattr(
+                            args,
+                            "min_embedded_subtitle_cues",
+                            DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES,
                         ),
                         progress_handler=progress_handler,
                     ),
@@ -1102,6 +1108,16 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         "fragmentation.".format(
             default=DEFAULT_VAD, choices=", ".join(VAD_CHOICES)
         ),
+    )
+    parser.add_argument(
+        "--min-embedded-subtitle-cues",
+        type=int,
+        default=DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES,
+        help="With a subs_then_* VAD, ignore embedded subtitle streams that have "
+        "fewer cues than this and align against audio instead (default=%d). "
+        "Forced-only tracks (signs, foreign lines) are usually far below this "
+        "and produce spurious offsets when used as the reference. Set to 0 to "
+        "restore the old behavior." % DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES,
     )
     parser.add_argument(
         "--whisper-weights",

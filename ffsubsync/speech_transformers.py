@@ -18,6 +18,7 @@ import tqdm
 from ffsubsync.constants import (
     DEFAULT_ENCODING,
     DEFAULT_MAX_SUBTITLE_SECONDS,
+    DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES,
     DEFAULT_SCALE_FACTOR,
     DEFAULT_START_SECONDS,
     DEFAULT_WHISPER_LANGUAGE,
@@ -264,9 +265,13 @@ def _probe_embedded_subtitle_streams(
     so that every subtitle stream can be extracted in a single ffmpeg pass.
     Bitmap subtitle codecs (PGS, VobSub, DVB, ...) are skipped because they
     cannot be muxed to SRT and would otherwise abort the whole extraction.
+    Streams flagged ``forced`` are skipped too: they hold only signs and
+    foreign-language lines, far too little speech to align against.
 
     Returns ``None`` when ffprobe is unavailable or fails, signaling the
-    caller to fall back to extracting streams one at a time.
+    caller to fall back to extracting streams one at a time. Returns an empty
+    list when ffprobe worked but found no usable stream, so the caller does
+    not go on to probe (and use) the streams that were deliberately skipped.
     """
     ffprobe_args = [
         ffmpeg_bin_path("ffprobe", gui_mode, ffmpeg_resources_path=ffmpeg_path),
@@ -275,7 +280,7 @@ def _probe_embedded_subtitle_streams(
         "-select_streams",
         "s",
         "-show_entries",
-        "stream=index,codec_name",
+        "stream=index,codec_name:stream_disposition=forced",
         "-of",
         "csv=p=0",
         fname,
@@ -295,10 +300,14 @@ def _probe_embedded_subtitle_streams(
             continue
         index = parts[0]
         codec_name = parts[1].strip().lower() if len(parts) > 1 else ""
+        forced = len(parts) > 2 and parts[2].strip() == "1"
         if codec_name in _BITMAP_SUBTITLE_CODECS:
             continue
+        if forced:
+            logger.info("skipping forced embedded subtitle stream 0:%s", index)
+            continue
         streams.append("0:{}".format(index))
-    return streams or None
+    return streams
 
 
 _FUSION_STRATEGIES: Tuple[str, ...] = ("weighted", "intersection", "union")
@@ -383,9 +392,11 @@ class VideoSpeechTransformer(TransformerMixin):
         max_duration_seconds: Optional[float] = None,
         extract_audio_first: bool = False,
         progress_handler: Optional[Callable[["ProgressInfo"], None]] = None,
+        min_embedded_subtitle_cues: int = DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES,
     ) -> None:
         super(VideoSpeechTransformer, self).__init__()
         self.vad: str = vad
+        self.min_embedded_subtitle_cues: int = min_embedded_subtitle_cues
         self.sample_rate: int = sample_rate
         self.frame_rate: int = frame_rate
         self._non_speech_label: float = non_speech_label
@@ -408,15 +419,15 @@ class VideoSpeechTransformer(TransformerMixin):
 
     def _extract_embedded_subs_single_pass(
         self, fname: str, streams: List[str]
-    ) -> Optional[List[io.BytesIO]]:
+    ) -> Optional[List[Tuple[str, io.BytesIO]]]:
         """Extract several subtitle streams in one ffmpeg invocation.
 
         ffmpeg can only send a single output to stdout, so each stream is
         written to a temporary file (in the system temp dir -- never next to
         the source media), read back into memory, and then deleted along with
-        the temp dir. Returns one in-memory buffer per stream that produced
-        data, or ``None`` if the ffmpeg invocation failed wholesale (the caller
-        then falls back to per-stream extraction).
+        the temp dir. Returns one ``(stream, buffer)`` pair per stream that
+        produced data, or ``None`` if the ffmpeg invocation failed wholesale
+        (the caller then falls back to per-stream extraction).
         """
         with tempfile.TemporaryDirectory(prefix="ffsubsync_subs_") as tmpdir:
             ffmpeg_args = [
@@ -442,24 +453,25 @@ class VideoSpeechTransformer(TransformerMixin):
             process.communicate()
             if process.returncode != 0:
                 return None
-            buffers: List[io.BytesIO] = []
-            for out_path in out_paths:
+            buffers: List[Tuple[str, io.BytesIO]] = []
+            for stream, out_path in zip(streams, out_paths):
                 if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
                     continue
                 with open(out_path, "rb") as f:
-                    buffers.append(io.BytesIO(f.read()))
+                    buffers.append((stream, io.BytesIO(f.read())))
             return buffers
 
     def _extract_embedded_subs_per_stream(
         self, fname: str, streams: List[str]
-    ) -> List[io.BytesIO]:
+    ) -> List[Tuple[str, io.BytesIO]]:
         """Extract subtitle streams one ffmpeg invocation at a time (to stdout).
 
         This preserves the original extraction behavior and is used as a
         fallback whenever single-pass extraction is unavailable (no ffprobe) or
-        fails. Stops at the first stream ffmpeg cannot extract.
+        fails. Stops at the first stream ffmpeg cannot extract. Returns
+        ``(stream, buffer)`` pairs.
         """
-        buffers: List[io.BytesIO] = []
+        buffers: List[Tuple[str, io.BytesIO]] = []
         for stream in streams:
             ffmpeg_args = [
                 ffmpeg_bin_path(
@@ -482,7 +494,7 @@ class VideoSpeechTransformer(TransformerMixin):
             output = process.communicate()[0]
             if process.returncode != 0:
                 break
-            buffers.append(io.BytesIO(output))
+            buffers.append((stream, io.BytesIO(output)))
         return buffers
 
     def try_fit_using_embedded_subs(self, fname: str) -> None:
@@ -495,7 +507,21 @@ class VideoSpeechTransformer(TransformerMixin):
             # enumerate the subtitle streams so they can all be extracted in a
             # single ffmpeg pass (~5x faster than one invocation per stream)
             streams = self._probe_embedded_subtitle_streams(fname)
-            if streams:
+            if streams is None:
+                # ffprobe unavailable/failed: fall back to probing the first 5
+                # streams individually (should cover 99% of movies)
+                subtitle_buffers = self._extract_embedded_subs_per_stream(
+                    fname, list(map("0:s:{}".format, range(5)))
+                )
+            elif not streams:
+                # ffprobe worked and every subtitle stream is bitmap or forced;
+                # do not probe blindly, that would pick the skipped streams up
+                # again
+                raise ValueError(
+                    "Video file appears to lack a usable text subtitle stream "
+                    "(none, bitmap-only, or forced-only)"
+                )
+            else:
                 subtitle_buffers = self._extract_embedded_subs_single_pass(
                     fname, streams
                 )
@@ -505,30 +531,44 @@ class VideoSpeechTransformer(TransformerMixin):
                     subtitle_buffers = self._extract_embedded_subs_per_stream(
                         fname, streams
                     )
-            else:
-                # ffprobe unavailable/failed: fall back to probing the first 5
-                # streams individually (should cover 99% of movies)
-                subtitle_buffers = self._extract_embedded_subs_per_stream(
-                    fname, list(map("0:s:{}".format, range(5)))
-                )
-        embedded_subs = []
-        embedded_subs_times = []
-        for buffer in subtitle_buffers:
+        # (stream, cue count, last cue time, speech step) per extracted stream
+        embedded_subs: List[Tuple[str, int, float, SubtitleSpeechTransformer]] = []
+        for stream, buffer in subtitle_buffers:
             pipe = cast(
                 Pipeline,
                 make_subtitle_speech_pipeline(start_seconds=self.start_seconds),
             ).fit(buffer)
             speech_step = pipe.steps[-1][1]
-            embedded_subs.append(speech_step)
-            embedded_subs_times.append(speech_step.max_time_)
+            num_cues = len(pipe.named_steps["parse"].subs_)
+            embedded_subs.append(
+                (stream, num_cues, speech_step.max_time_, speech_step)
+            )
         if len(embedded_subs) == 0:
             if self.ref_stream is None:
                 error_msg = "Video file appears to lack subtitle stream"
             else:
                 error_msg = "Stream {} not found".format(self.ref_stream)
             raise ValueError(error_msg)
-        # use longest set of embedded subs
-        subs_to_use = embedded_subs[int(np.argmax(embedded_subs_times))]
+        # Use the stream with the most cues; break ties by last cue time. The
+        # previous rule (latest cue wins) let a forced-only stub with one cue
+        # near the end beat a full dialogue track.
+        stream, num_cues, _, subs_to_use = max(
+            embedded_subs, key=lambda entry: (entry[1], entry[2])
+        )
+        if self.ref_stream is None and num_cues < self.min_embedded_subtitle_cues:
+            # Too little speech to align against; raising here makes ``fit``
+            # fall through to the audio VAD, exactly as if no stream existed.
+            raise ValueError(
+                "best embedded subtitle stream {} has only {} cues "
+                "(< {}); falling back to audio".format(
+                    stream, num_cues, self.min_embedded_subtitle_cues
+                )
+            )
+        logger.info(
+            "using embedded subtitle stream %s (%d cues) as reference",
+            stream,
+            num_cues,
+        )
         self.video_speech_results_ = subs_to_use.subtitle_speech_results_
 
     def _build_ffmpeg_args(self, fname: str) -> List[str]:

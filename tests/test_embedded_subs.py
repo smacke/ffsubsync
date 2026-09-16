@@ -19,15 +19,18 @@ from ffsubsync.constants import DEFAULT_FRAME_RATE, SAMPLE_RATE
 from ffsubsync.speech_transformers import VideoSpeechTransformer
 
 
-def _srt(end_sec):
-    """A valid SRT string with one short cue per second up to ``end_sec``."""
+def _srt(end_sec, step=1):
+    """A valid SRT string with one short cue every ``step`` seconds up to ``end_sec``."""
     lines = []
-    for i in range(1, end_sec + 1):
-        lines.append(str(i))
+    for n, start in enumerate(range(0, end_sec, step), start=1):
+        lines.append(str(n))
         lines.append(
-            "00:00:{:02d},000 --> 00:00:{:02d},500".format(i - 1, i - 1)
+            "{:02d}:{:02d}:{:02d},000 --> {:02d}:{:02d}:{:02d},500".format(
+                start // 3600, start % 3600 // 60, start % 60,
+                start // 3600, start % 3600 // 60, start % 60,
+            )
         )
-        lines.append("line {}".format(i))
+        lines.append("line {}".format(n))
         lines.append("")
     return "\n".join(lines).encode("utf-8")
 
@@ -46,6 +49,9 @@ def _transformer(**overrides):
         sample_rate=SAMPLE_RATE,
         frame_rate=DEFAULT_FRAME_RATE,
         non_speech_label=0.0,
+        # the fixtures here are a few cues long; the sparse-stream threshold
+        # has its own tests below
+        min_embedded_subtitle_cues=0,
     )
     kwargs.update(overrides)
     return VideoSpeechTransformer(**kwargs)
@@ -217,11 +223,11 @@ def test_explicit_ref_stream_uses_per_stream(monkeypatch):
 def test_raises_when_no_subtitle_streams(monkeypatch):
     _install_fake_popen(
         monkeypatch,
-        probe_lines=[],  # ffprobe finds nothing -> fall back -> per-stream all fail
+        probe_lines=[],  # ffprobe finds nothing -> no usable stream, no ffmpeg
         srt_by_stream={},
     )
     t = _transformer()
-    with pytest.raises(ValueError, match="lack subtitle stream"):
+    with pytest.raises(ValueError, match="lack a usable text subtitle stream"):
         t.try_fit_using_embedded_subs("movie.mkv")
 
 
@@ -276,3 +282,84 @@ def test_build_ffmpeg_args_keeps_aresample_filter():
     args = t._build_ffmpeg_args("movie.mkv")
     assert "-af" in args
     assert args[args.index("-af") + 1] == "aresample=async=1"
+
+
+def test_forced_streams_are_skipped(monkeypatch):
+    # ffprobe now reports the forced disposition as a third column; a forced
+    # stream (signs / foreign lines only) must never be mapped as the reference
+    calls = _install_fake_popen(
+        monkeypatch,
+        probe_lines=["2,subrip,1", "3,subrip,0"],
+        srt_by_stream={"0:2": _srt(3000, step=10), "0:3": _srt(60)},
+    )
+    t = _transformer()
+    t.try_fit_using_embedded_subs("movie.mkv")
+
+    ffmpeg_call = next(
+        c for c in calls if "ffmpeg" in os.path.basename(c[0]).lower()
+    )
+    mapped = [ffmpeg_call[i + 1] for i, a in enumerate(ffmpeg_call) if a == "-map"]
+    assert mapped == ["0:3"]
+    assert np.array_equal(
+        t.video_speech_results_, _parse_speech_results(_srt(60))
+    )
+
+
+def test_stream_with_most_cues_wins_over_latest_cue(monkeypatch):
+    # 0:2 is a 3-cue stub whose last cue sits near the end of the film; 0:3 is a
+    # full dialogue track that ends earlier. The old rule (latest cue wins)
+    # picked the stub.
+    stub = _srt(7200, step=2400)  # cues at 0, 40 and 80 minutes
+    full = _srt(1200)  # 1200 cues, ends at 20 minutes
+    _install_fake_popen(
+        monkeypatch,
+        probe_lines=["2,subrip,0", "3,subrip,0"],
+        srt_by_stream={"0:2": stub, "0:3": full},
+    )
+    t = _transformer()
+    t.try_fit_using_embedded_subs("movie.mkv")
+    assert np.array_equal(t.video_speech_results_, _parse_speech_results(full))
+
+
+def test_sparse_streams_fall_back_to_audio(monkeypatch):
+    # with the default threshold a forced-style stub is treated as "no usable
+    # subtitle stream", which is the signal fit() uses to fall back to audio
+    _install_fake_popen(
+        monkeypatch,
+        probe_lines=["2,subrip,0"],
+        srt_by_stream={"0:2": _srt(40)},  # 40 cues < default 50
+    )
+    t = _transformer(min_embedded_subtitle_cues=st.DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES)
+    with pytest.raises(ValueError, match="only 40 cues"):
+        t.try_fit_using_embedded_subs("movie.mkv")
+    assert t.video_speech_results_ is None
+
+
+def test_explicit_ref_stream_bypasses_sparse_threshold(monkeypatch):
+    # a stream the user asked for by name is used no matter how few cues it has
+    _install_fake_popen(
+        monkeypatch,
+        probe_lines=[],
+        srt_by_stream={"0:s:1": _srt(5)},
+    )
+    t = _transformer(
+        ref_stream="0:s:1",
+        min_embedded_subtitle_cues=st.DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES,
+    )
+    t.try_fit_using_embedded_subs("movie.mkv")
+    assert np.array_equal(t.video_speech_results_, _parse_speech_results(_srt(5)))
+
+
+def test_only_forced_streams_means_no_usable_stream(monkeypatch):
+    # when ffprobe finds subtitle streams but every one is forced (or bitmap),
+    # the transformer must not fall back to blind per-stream probing, which
+    # would pick the forced stream up again; it raises so fit() uses audio
+    calls = _install_fake_popen(
+        monkeypatch,
+        probe_lines=["2,subrip,1", "3,hdmv_pgs_subtitle,0"],
+        srt_by_stream={"0:2": _srt(5), "0:s:0": _srt(5)},
+    )
+    t = _transformer()
+    with pytest.raises(ValueError, match="lack a usable text subtitle stream"):
+        t.try_fit_using_embedded_subs("movie.mkv")
+    assert _count_ffmpeg_invocations(calls) == 0
