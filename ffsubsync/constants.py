@@ -16,6 +16,11 @@ DEFAULT_START_SECONDS: int = 0
 DEFAULT_SCALE_FACTOR: float = 1
 DEFAULT_VAD: str = "subs_then_webrtc"
 DEFAULT_MAX_OFFSET_SECONDS: int = 60
+# In the subs_then_* VAD modes, an embedded subtitle stream with fewer cues than
+# this is treated as absent so alignment falls back to audio. Forced-only tracks
+# (signs and foreign lines) are typically 1 to 60 cues and carry too little
+# speech to align against.
+DEFAULT_MIN_EMBEDDED_SUBTITLE_CUES: int = 50
 DEFAULT_APPLY_OFFSET_SECONDS: int = 0
 
 # Penalty applied by the alass-style piecewise aligner (--split-penalty) when the

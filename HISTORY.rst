@@ -1,6 +1,10 @@
 History
 =======
 
+Unreleased
+----------
+* In the ``subs_then_*`` VAD modes, skip embedded subtitle streams flagged ``forced``, pick the reference stream by cue count instead of last cue time, and fall back to audio when the best stream has fewer than ``--min-embedded-subtitle-cues`` cues (default 50). Forced-only stubs previously produced offsets pinned at ``--max-offset-seconds`` with negative scores on in-sync subtitles (#238);
+
 0.5.1 (2026-07-23)
 ------------------
 * Make faust-cchardet a required dependency now that it works on Python 3.13+;
