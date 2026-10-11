@@ -50,11 +50,12 @@ When the reference is a subtitle file you can also control its text encoding wit
 subtitles — see :doc:`encoding`), and merge the reference into the output with
 ``--merge-with-reference``.
 
-PGS image subtitles
--------------------
+Image-based subtitles (PGS, VobSub, DVB)
+----------------------------------------
 
 Blu-ray rips often ship subtitles as **PGS** (Presentation Graphic Stream)
-image-based tracks rather than text. ffsubsync can use a PGS track as the sync
+image-based tracks rather than text, DVD rips as **VobSub**, and broadcast
+recordings as **DVB** subtitles. ffsubsync can use any of these as the sync
 reference without any OCR, deriving speech timing from when each subtitle image
 is displayed:
 
@@ -62,8 +63,11 @@ is displayed:
 
    $ ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream
 
-Passing ``--pgs-ref-stream`` with no value auto-detects the first
-``hdmv_pgs_subtitle`` track. To pick a specific track, give it a stream
+Passing ``--pgs-ref-stream`` with no value auto-detects an image-based track.
+Commentary tracks and forced tracks (which usually carry only signs and
+foreign-language lines) are passed over while there is another; among the rest,
+the track with the most subtitles is used when the file records it (as mkvmerge
+does), and otherwise the first. To pick a specific track, give it a stream
 specifier (the leading ``0:`` is optional):
 
 .. code-block:: console
@@ -73,7 +77,7 @@ specifier (the leading ``0:`` is optional):
 Whisper transcription (``--whisper-weights``)
 ---------------------------------------------
 
-When a video has **no subtitles at all** — not embedded text, not PGS — the only
+When a video has **no subtitles at all** — not embedded text, not image-based — the only
 reference is the audio. Instead of a plain VAD, recent ffmpeg builds (>= 8.0,
 compiled with ``--enable-whisper``) can transcribe the audio with
 `whisper.cpp <https://github.com/ggml-org/whisper.cpp>`_ in a single pass.
