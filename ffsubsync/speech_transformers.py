@@ -1018,15 +1018,48 @@ class DeserializeSpeechTransformer(TransformerMixin):
         return self.deserialized_speech_results_
 
 
+# image-based subtitle codecs whose on-screen times can serve as a sync
+# reference: Blu-ray (PGS), DVD (VobSub) and DVB
+_PICTURE_REFERENCE_CODECS: Tuple[str, ...] = (
+    "hdmv_pgs_subtitle",
+    "dvd_subtitle",
+    "dvb_subtitle",
+)
+
+
+def _is_commentary_stream(stream: Dict) -> bool:
+    if stream.get("disposition", {}).get("comment"):
+        return True
+    return "commentary" in stream.get("tags", {}).get("title", "").lower()
+
+
+def _number_of_frames(stream: Dict) -> int:
+    """The cue count mkvmerge records in a stream's statistics tags, or 0."""
+    for key, value in stream.get("tags", {}).items():
+        if key.upper().startswith("NUMBER_OF_FRAMES"):
+            try:
+                return int(value)
+            except ValueError:
+                return 0
+    return 0
+
+
 def find_pgs_stream(
     fname: str,
     ffmpeg_path: Optional[str] = None,
     gui_mode: bool = False,
 ) -> Optional[str]:
-    """Return the ffmpeg stream specifier for the first PGS subtitle track in *fname*.
+    """Return the ffmpeg stream specifier for the image-based subtitle track in
+    *fname* that best stands in for the dialogue.
+
+    PGS, VobSub and DVB tracks are all considered. A commentary track is
+    passed over while there is another, as is a forced track, which usually
+    carries only signs and foreign-language lines. Among the rest, the track
+    with the most cues wins when the container records cue counts (as
+    mkvmerge does); otherwise the first one does.
 
     Uses ``ffprobe`` to inspect the file.  Returns a string like ``"0:s:0"`` on
-    success, or ``None`` if the file has no ``hdmv_pgs_subtitle`` streams.
+    success, or ``None`` if the file has no image-based subtitle streams.
     """
     try:
         probe = ffmpeg.probe(
@@ -1037,20 +1070,123 @@ def find_pgs_stream(
         logger.warning("ffprobe failed while searching for PGS streams: %s", e)
         return None
 
+    candidates: List[Tuple[int, Dict]] = []
     sub_index = 0
     for stream in probe.get("streams", []):
         if stream.get("codec_type") == "subtitle":
-            if stream.get("codec_name") == "hdmv_pgs_subtitle":
-                specifier = "0:s:{}".format(sub_index)
-                logger.info(
-                    "auto-detected PGS stream: %s (ffmpeg stream index %s)",
-                    specifier,
-                    stream.get("index"),
-                )
-                return specifier
+            if stream.get("codec_name") in _PICTURE_REFERENCE_CODECS:
+                candidates.append((sub_index, stream))
             sub_index += 1
+    if not candidates:
+        return None
 
-    return None
+    dialogue = [c for c in candidates if not _is_commentary_stream(c[1])]
+    candidates = dialogue or candidates
+    # max() keeps the first of equals, i.e. the track the file lists first
+    sub_index, stream = max(
+        candidates,
+        key=lambda c: (
+            not c[1].get("disposition", {}).get("forced"),
+            _number_of_frames(c[1]),
+        ),
+    )
+    specifier = "0:s:{}".format(sub_index)
+    logger.info(
+        "auto-detected %s stream: %s (ffmpeg stream index %s)",
+        stream.get("codec_name"),
+        specifier,
+        stream.get("index"),
+    )
+    return specifier
+
+
+def _probe_stream_codec(
+    fname: str,
+    stream: str,
+    ffmpeg_path: Optional[str] = None,
+    gui_mode: bool = False,
+) -> Optional[str]:
+    """Return the codec name of *stream* in *fname*, or ``None`` if unknown."""
+    probe_stream = stream[2:] if stream.startswith("0:") else stream
+    try:
+        probe = ffmpeg.probe(
+            fname,
+            cmd=ffmpeg_bin_path("ffprobe", gui_mode, ffmpeg_resources_path=ffmpeg_path),
+            select_streams=probe_stream,
+            show_entries="stream=codec_name",
+        )
+    except Exception:
+        return None
+    streams = probe.get("streams", [])
+    if not streams:
+        return None
+    return streams[0].get("codec_name")
+
+
+def _get_dvd_timings_via_ffprobe(
+    fname: str,
+    stream: str,
+    ffmpeg_path: Optional[str] = None,
+    gui_mode: bool = False,
+) -> Optional[List[Tuple[float, float]]]:
+    """Read DVD (VobSub) subtitle timings by letting ffprobe decode the stream.
+
+    Unlike PGS, a DVD subtitle packet is never followed by a separate "clear"
+    packet: when a caption leaves the screen is written inside the packet
+    itself (its stop-display command), and containers commonly report
+    ``duration_time=N/A`` for it -- ffmpeg and mkvmerge both do when muxing
+    VobSub into MKV. Decoding the stream recovers that time as each subtitle
+    frame's ``end_display_time``. A caption also ends where the next one
+    replaces it.
+
+    Returns a list of ``(start_seconds, end_seconds)`` tuples, or ``None`` if
+    ffprobe fails or returns no usable captions.
+    """
+    ffprobe_cmd = ffmpeg_bin_path(
+        "ffprobe", gui_mode, ffmpeg_resources_path=ffmpeg_path
+    )
+    probe_stream = stream[2:] if stream.startswith("0:") else stream
+    try:
+        probe_data = ffmpeg.probe(
+            fname,
+            cmd=ffprobe_cmd,
+            show_frames=None,
+            select_streams=probe_stream,
+            show_entries=(
+                "subtitle=pts_time,start_display_time,end_display_time,num_rects"
+            ),
+        )
+    except Exception:
+        return None
+
+    captions: List[Tuple[float, float, float]] = []
+    for frame in probe_data.get("frames", []):
+        try:
+            pts_time = float(frame["pts_time"])
+            start_ms = int(frame.get("start_display_time", 0))
+            end_ms = int(frame["end_display_time"])
+            num_rects = int(frame.get("num_rects", 1))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if num_rects == 0:
+            # an empty frame only clears the screen: it ends the caption
+            # before it and shows nothing itself
+            start_ms = end_ms = 0
+        captions.append((pts_time, start_ms / 1000.0, end_ms / 1000.0))
+    captions.sort()
+
+    results: List[Tuple[float, float]] = []
+    for i, (pts_time, start_offset, end_offset) in enumerate(captions):
+        start = pts_time + start_offset
+        end = pts_time + end_offset
+        if i + 1 < len(captions):
+            end = min(end, captions[i + 1][0])
+        if end > start:
+            results.append((start, end))
+
+    if not results:
+        return None
+    return results
 
 
 def _get_pgs_timings_via_ffprobe(
@@ -1126,9 +1262,15 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
     a caption is displayed, 0.0 otherwise. That signal can then be aligned against
     the input subtitle file by the normal ffsubsync pipeline.
 
+    DVB subtitles are read the same way: they too mark a caption's end with a
+    tiny packet of their own. DVD (VobSub) subtitles are not -- each packet
+    carries its own end time inside it -- so for those the stream is decoded
+    instead (see :func:`_get_dvd_timings_via_ffprobe`).
+
     The reference stream may be given explicitly via ``ref_stream`` (with or
-    without a leading ``0:``), or left as ``None`` to auto-detect the first
-    ``hdmv_pgs_subtitle`` track in the file.
+    without a leading ``0:``), or left as ``None`` to auto-detect the
+    image-based subtitle track that best stands in for the dialogue (see
+    :func:`find_pgs_stream`).
     """
 
     # PGS is already in the MKV timebase so its duration cannot be compared
@@ -1159,23 +1301,35 @@ class PGSSpeechTransformer(TransformerMixin, ComputeSpeechFrameBoundariesMixin):
             stream = find_pgs_stream(fname, self.ffmpeg_path, self.gui_mode)
             if stream is None:
                 raise ValueError(
-                    "No hdmv_pgs_subtitle stream found in {}. "
-                    "Specify one explicitly with --pgs-ref-stream.".format(fname)
+                    "No image-based (PGS, VobSub or DVB) subtitle stream found "
+                    "in {}. Specify one explicitly with --pgs-ref-stream.".format(fname)
                 )
         else:
             stream = self.ref_stream
             if not stream.startswith("0:"):
                 stream = "0:" + stream
 
-        logger.info("reading PGS timings for stream %s from %s...", stream, fname)
-        timings = _get_pgs_timings_via_ffprobe(
-            fname, stream, self.ffmpeg_path, self.gui_mode
+        codec = _probe_stream_codec(fname, stream, self.ffmpeg_path, self.gui_mode)
+        logger.info(
+            "reading %s timings for stream %s from %s...",
+            codec or "PGS",
+            stream,
+            fname,
         )
+        if codec == "dvd_subtitle":
+            timings = _get_dvd_timings_via_ffprobe(
+                fname, stream, self.ffmpeg_path, self.gui_mode
+            )
+        else:
+            timings = _get_pgs_timings_via_ffprobe(
+                fname, stream, self.ffmpeg_path, self.gui_mode
+            )
         if timings is None:
             raise ValueError(
-                "Failed to get PGS timings via ffprobe for stream {} from {}. "
-                "Make sure the stream exists and is an hdmv_pgs_subtitle track "
-                "(check with: ffprobe -show_streams {}).".format(stream, fname, fname)
+                "Failed to get subtitle timings via ffprobe for stream {} from {}. "
+                "Make sure the stream exists and is an image-based subtitle track "
+                "(hdmv_pgs_subtitle, dvd_subtitle or dvb_subtitle; check with: "
+                "ffprobe -show_streams {}).".format(stream, fname, fname)
             )
 
         if not timings:

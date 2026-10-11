@@ -882,10 +882,11 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
         const="auto",
         default=None,
         help=(
-            "Use a PGS (Presentation Graphic Stream) image-based subtitle track from "
-            "the reference MKV as the sync reference instead of audio VAD. "
+            "Use an image-based subtitle track (PGS, VobSub or DVB) from "
+            "the reference video as the sync reference instead of audio VAD. "
             "Optionally specify the stream (leading `0:` is optional, e.g. `s:0` or `3`). "
-            "Omit the value to auto-detect the first hdmv_pgs_subtitle track. "
+            "Omit the value to auto-detect one, passing over commentary and "
+            "forced tracks while there is another. "
             "Example: `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream` (auto) "
             "or `ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream s:2` (explicit)."
         ),
