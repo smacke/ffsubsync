@@ -3,12 +3,13 @@ import copy
 from datetime import timedelta
 import logging
 import os
+import shutil
+import tempfile
 from typing import cast, Any, Dict, Iterator, List, Optional
 
 import pysubs2
 import srt
 import sys
-
 
 logging.basicConfig(level=logging.INFO)
 logger: logging.Logger = logging.getLogger(__name__)
@@ -157,8 +158,29 @@ class GenericSubtitlesFile:
         else:
             raise NotImplementedError("unsupported output format: %s" % out_format)
 
-        with open(fname or sys.stdout.fileno(), "wb") as f:
-            f.write(to_write.encode(self._encoding))
+        encoded = to_write.encode(self._encoding)
+        if fname is not None and os.path.isfile(fname):
+            # Preserve the original until the complete replacement is written
+            # and closed. Resolve symlinks to keep writing to their target.
+            destination = os.path.realpath(fname)
+            # Check the original's write permissions without truncating it.
+            with open(destination, "ab"):
+                pass
+            temporary_file = tempfile.NamedTemporaryFile(
+                mode="wb", dir=os.path.dirname(destination), delete=False
+            )
+            temporary_name = temporary_file.name
+            try:
+                with temporary_file as f:
+                    f.write(encoded)
+                shutil.copymode(destination, temporary_name)
+                os.replace(temporary_name, destination)
+            finally:
+                if os.path.exists(temporary_name):
+                    os.unlink(temporary_name)
+        else:
+            with open(fname or sys.stdout.fileno(), "wb") as f:
+                f.write(encoded)
 
 
 class SubsMixin:
