@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+import copy
 from datetime import datetime
 import logging
 import os
@@ -602,7 +603,9 @@ def validate_args(args: argparse.Namespace) -> None:
         and args.extract_subs_from_stream is None
         and not args.gui_mode
         and not args.make_test_case
-        and sys.stdin.isatty()  # don't hijack subtitles piped in on stdin
+        # Batch mode cannot safely map stdin to several references, so each
+        # reference must use its own auto-detected subtitle inputs.
+        and (sys.stdin.isatty() or getattr(args, "batch_mode", False))
     ):
         # No input subtitles were given (and nothing is piped in), so look for
         # subtitle files alongside the reference that share its name.
@@ -626,6 +629,18 @@ def validate_args(args: argparse.Namespace) -> None:
                 )
         else:
             logger.info("no input srt detected from reference")
+    if (
+        getattr(args, "batch_mode", False)
+        and not args.srtin
+        and args.apply_offset_seconds == 0
+        and not args.serialize_speech
+    ):
+        raise ValueError(
+            "no input subtitle files detected for reference {!r}; "
+            "multiple references cannot share subtitles from stdin".format(
+                args.reference
+            )
+        )
     if (
         args.make_test_case and not args.gui_mode
     ):  # this validation not necessary for gui mode
@@ -823,6 +838,45 @@ def run(
                 os.remove(log_path)
 
 
+def _run_multiple_references(args: argparse.Namespace) -> int:
+    if args.srtin:
+        logger.error("cannot specify -i/--srtin with multiple references")
+        return 1
+    if args.srtout is not None:
+        logger.error("cannot specify -o/--srtout with multiple references")
+        return 1
+    if args.extract_subs_from_stream is not None:
+        logger.error("cannot extract subtitles from multiple references to stdout")
+        return 1
+
+    retval = 0
+    for reference in [args.reference] + args.additional_references:
+        try:
+            if (
+                args.apply_offset_seconds == 0
+                and not args.serialize_speech
+                and (
+                    is_remote_url(reference)
+                    or not _detect_srtin_from_reference(reference)
+                )
+            ):
+                logger.info(
+                    "no input subtitle files detected for reference '%s'; skipping",
+                    reference,
+                )
+                continue
+            logger.info("processing reference '%s'", reference)
+            reference_args = copy.copy(args)
+            reference_args.reference = reference
+            reference_args.additional_references = []
+            reference_args.batch_mode = True
+            retval = max(retval, run(reference_args)["retval"])
+        except Exception:
+            logger.exception("failed to process reference '%s'", reference)
+            retval = 1
+    return retval
+
+
 def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "reference",
@@ -830,6 +884,15 @@ def add_main_args_for_cli(parser: argparse.ArgumentParser) -> None:
         help=(
             "Reference (video, subtitles, or a numpy array with VAD speech) "
             "to which to synchronize input subtitles."
+        ),
+    )
+    parser.add_argument(
+        "additional_references",
+        nargs="*",
+        metavar="reference",
+        help=(
+            "Additional references to process independently. Input subtitles "
+            "are auto-detected for each reference; -i and -o cannot be used."
         ),
     )
     parser.add_argument(
@@ -1193,7 +1256,10 @@ def make_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     parser = make_parser()
-    return run(parser)["retval"]
+    args = parser.parse_args()
+    if args.additional_references:
+        return _run_multiple_references(args)
+    return run(args)["retval"]
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ import pytest
 from ffsubsync.ffsubsync import (
     _detect_srtin_from_reference,
     _resolve_srtout,
+    _run_multiple_references,
+    main,
     make_parser,
     validate_args,
 )
@@ -72,6 +74,129 @@ def _args(reference, **overrides):
     for key, value in overrides.items():
         setattr(args, key, value)
     return args
+
+
+def test_parser_accepts_multiple_references():
+    args = make_parser().parse_args(
+        ["--overwrite-input", "first.mkv", "second.mkv", "third.mkv"]
+    )
+    assert args.reference == "first.mkv"
+    assert args.additional_references == ["second.mkv", "third.mkv"]
+    assert args.overwrite_input is True
+
+
+def test_main_dispatches_multiple_references(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["ffs", "first.mkv", "second.mkv"])
+    monkeypatch.setattr("ffsubsync.ffsubsync._run_multiple_references", lambda args: 7)
+    assert main() == 7
+
+
+def test_run_multiple_references_processes_each_reference(monkeypatch):
+    args = make_parser().parse_args(
+        ["--overwrite-input", "first.mkv", "second.mkv"]
+    )
+    monkeypatch.setattr(
+        "ffsubsync.ffsubsync._detect_srtin_from_reference",
+        lambda _reference: ["in.srt"],
+    )
+    seen = []
+
+    def fake_run(reference_args):
+        seen.append(
+            (
+                reference_args.reference,
+                reference_args.additional_references,
+                reference_args.batch_mode,
+            )
+        )
+        return {"retval": 0}
+
+    monkeypatch.setattr("ffsubsync.ffsubsync.run", fake_run)
+    retval = _run_multiple_references(args)
+
+    assert seen == [
+        ("first.mkv", [], True),
+        ("second.mkv", [], True),
+    ]
+    assert retval == 0
+
+
+def test_run_multiple_references_aggregates_failures(monkeypatch):
+    args = make_parser().parse_args(["first.mkv", "second.mkv"])
+    monkeypatch.setattr(
+        "ffsubsync.ffsubsync._detect_srtin_from_reference",
+        lambda _reference: ["in.srt"],
+    )
+
+    def fake_run(reference_args):
+        return {"retval": 1 if reference_args.reference == "second.mkv" else 0}
+
+    monkeypatch.setattr("ffsubsync.ffsubsync.run", fake_run)
+    assert _run_multiple_references(args) == 1
+
+
+def test_run_multiple_references_continues_after_exception(monkeypatch):
+    args = make_parser().parse_args(["first.mkv", "second.mkv"])
+    monkeypatch.setattr(
+        "ffsubsync.ffsubsync._detect_srtin_from_reference",
+        lambda _reference: ["in.srt"],
+    )
+    seen = []
+
+    def fake_run(reference_args):
+        seen.append(reference_args.reference)
+        if reference_args.reference == "first.mkv":
+            raise RuntimeError("broken reference")
+        return {"retval": 0}
+
+    monkeypatch.setattr("ffsubsync.ffsubsync.run", fake_run)
+    assert _run_multiple_references(args) == 1
+    assert seen == ["first.mkv", "second.mkv"]
+
+
+def test_run_multiple_references_skips_references_without_subtitles(monkeypatch):
+    args = make_parser().parse_args(["first.mkv", "second.mkv"])
+    monkeypatch.setattr(
+        "ffsubsync.ffsubsync._detect_srtin_from_reference",
+        lambda reference: [] if reference == "first.mkv" else ["second.srt"],
+    )
+    seen = []
+
+    def fake_run(reference_args):
+        seen.append(reference_args.reference)
+        return {"retval": 0}
+
+    monkeypatch.setattr("ffsubsync.ffsubsync.run", fake_run)
+    assert _run_multiple_references(args) == 0
+    assert seen == ["second.mkv"]
+
+
+def test_run_multiple_references_rejects_shared_input():
+    args = make_parser().parse_args(
+        ["first.mkv", "second.mkv", "-i", "shared.srt"]
+    )
+    assert _run_multiple_references(args) == 1
+
+
+def test_validate_args_batch_mode_uses_per_reference_inputs(media_dir, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    args = _args(
+        str(media_dir / "movie.mkv"), overwrite_input=True, batch_mode=True
+    )
+    validate_args(args)
+    assert {os.path.basename(path) for path in args.srtin} == {
+        "movie.srt",
+        "movie.en.srt",
+    }
+
+
+def test_validate_args_batch_mode_rejects_missing_input(tmp_path, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    reference = tmp_path / "missing-subs.mkv"
+    _touch(str(reference))
+    args = _args(str(reference), overwrite_input=True, batch_mode=True)
+    with pytest.raises(ValueError, match="no input subtitle files detected"):
+        validate_args(args)
 
 
 def test_validate_args_auto_detects_and_derives_output(media_dir, monkeypatch):

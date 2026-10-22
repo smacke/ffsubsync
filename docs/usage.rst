@@ -54,8 +54,21 @@ originals untouched. Previously-produced ``*.synced.srt`` files are skipped, so
 re-running is safe. Pass ``--overwrite-input`` to rewrite the detected files in
 place instead of producing ``.synced.srt`` copies.
 
-Sibling auto-detection is local-only: it is skipped when subtitles are piped in
-on stdin, and for remote references (below).
+You can pass multiple references at once. Shell globs are expanded into separate
+references, and each reference independently auto-detects its sibling subtitles:
+
+.. code-block:: console
+
+   $ ffs --overwrite-input *.mkv
+
+Explicit ``-i`` and ``-o`` paths are not accepted with multiple references
+because they would be ambiguous, and batch mode does not consume subtitles from
+stdin. References without matching external subtitles are skipped. A failure for
+one reference does not prevent the remaining references from being processed;
+the command exits non-zero if any processed reference fails.
+
+Sibling auto-detection is local-only. In single-reference mode, it is also
+skipped when subtitles are piped in on stdin.
 
 Reading and writing standard streams
 ------------------------------------

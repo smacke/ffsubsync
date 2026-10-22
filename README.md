@@ -85,8 +85,19 @@ This picks up files like `video.srt` and `video.en.srt` from the reference's
 directory and writes the synced result for each to a `<name>.synced.srt`
 alongside it (e.g. `video.synced.srt`), leaving the originals untouched.
 Previously-synced `*.synced.srt` outputs are skipped, so re-running is safe. Add
-`--overwrite-input` to overwrite the detected file(s) in place instead. Auto-
-detection is skipped when subtitles are piped in on stdin.
+`--overwrite-input` to overwrite the detected file(s) in place instead. For a
+single reference, auto-detection is skipped when subtitles are piped in on stdin.
+
+Multiple references can be processed in one command, with sibling subtitles
+auto-detected independently for each reference:
+~~~
+ffs --overwrite-input *.mkv
+~~~
+Explicit `-i` and `-o` paths cannot be combined with multiple references because
+they would be ambiguous, and batch mode does not consume subtitles from stdin.
+References without matching external subtitles are skipped. Processing continues
+if one reference fails, and the command exits non-zero if any processed reference
+fails.
 
 The reference can also be a remote URL instead of a local file. Anything ffmpeg
 can read directly works as a video / audio reference, and remote subtitle files

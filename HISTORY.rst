@@ -1,6 +1,10 @@
 History
 =======
 
+next
+----
+* Process multiple references in one invocation (for example, ``ffs --overwrite-input *.mkv``);
+
 0.5.1 (2026-07-23)
 ------------------
 * Make faust-cchardet a required dependency now that it works on Python 3.13+;
