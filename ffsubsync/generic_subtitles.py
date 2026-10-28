@@ -136,7 +136,7 @@ class GenericSubtitlesFile:
         if fname is None:
             out_format = self._sub_format
         else:
-            out_format = os.path.splitext(fname)[-1][1:]
+            out_format = os.path.splitext(fname)[-1][1:].lower()
         subs = list(self.gen_raw_resolved_subs())
         if self._sub_format in ("ssa", "ass", "vtt"):
             ssaf = pysubs2.SSAFile()

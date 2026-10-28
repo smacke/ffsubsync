@@ -66,7 +66,7 @@ def override(args: argparse.Namespace, **kwargs: Any) -> Dict[str, Any]:
 def _ref_format(ref_fname: Optional[str]) -> Optional[str]:
     if ref_fname is None:
         return None
-    return ref_fname[-3:]
+    return ref_fname[-3:].lower()
 
 
 def make_test_case(
@@ -131,7 +131,7 @@ def get_srt_pipe_maker(
     if srtin is None:
         srtin_format = "srt"
     else:
-        srtin_format = os.path.splitext(srtin)[-1][1:]
+        srtin_format = os.path.splitext(srtin)[-1][1:].lower()
     parser = make_subtitle_parser(fmt=srtin_format, caching=True, **args.__dict__)
     return lambda scale_factor: make_subtitle_speech_pipeline(
         **override(args, scale_factor=scale_factor, parser=parser)
